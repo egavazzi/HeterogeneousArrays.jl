@@ -342,31 +342,33 @@ julia> v.b
     return dest
 end
 
-# Compute segment ranges for each field in the NamedTuple
-# The results are zero-indexed ranges, i.e. the first field starts at 0
+# Compute the segment of each field in the NamedTuple
+# The results are zero-indexed, i.e. the first field starts at 0
 function _compute_segment_ranges(x::NamedTuple)
-    # We need zero-based contiguous ranges for each field in order.
     # NOTE: Iterating a NamedTuple iterates its values, which is what we want for lengths.
     n = length(x)
     if n == 0
         return NamedTuple()
     end
-    # Collect lengths without allocating intermediate vectors where possible.
     # map over NamedTuple returns a tuple, so we can splat into cumsum input.
     field_lengths = map(_field_length, x)  # tuple of Int
     # Build prefix sums starting with 0 (zero-based indexing for segments).
     # We avoid concatenations like [0; ...] by constructing a tuple directly.
     segment_ends = cumsum((0, field_lengths...))  # length n+1 tuple
-    # Create the range for each field i: segment_ends[i] : segment_ends[i+1]-1
-    ranges = ntuple(i -> begin
-            s = segment_ends[i]
-            e = segment_ends[i + 1] - 1
-            s:e
-        end, n)
+    # Field i occupies segment_ends[i] : segment_ends[i+1]-1
+    ranges = ntuple(i -> segment(x[i], segment_ends[i], segment_ends[i + 1] - 1), n)
     # Extract the compile-time field name tuple from the NamedTuple type for a fully-typed result.
     names = fieldnames(typeof(x))
     return NamedTuple{names}(ranges)
 end
+
+# The segment of a field in the flattened layout, given its zero-based first and last
+# offsets. A scalar (Ref) field yields a single Int so that indexing an ordinary array
+# with it produces a scalar (or a 0-dimensional view). This has the benefit of keeping the
+# per-field broadcast for that field 0-dimensional and lets `materialize` return a scalar.
+# An array field yields a UnitRange.
+segment(::Ref, s, e) = s
+segment(::AbstractArray, s, e) = s:e
 
 """
     Base.copyto!(dest::AbstractArray, bc::Broadcast.Broadcasted{Broadcast.Style{AbstractHeterogeneousVector{Names}}})
@@ -481,20 +483,10 @@ end
         bc::Broadcast.Broadcasted{MixedHeterogeneousVectorStyle{Names}}
 ) where {Names}
     hv = find_heterogeneous_vector(bc)
-    hv_nt = NamedTuple(hv)
-    segment_ranges = _compute_segment_ranges(hv_nt)
+    segment_ranges = _compute_segment_ranges(NamedTuple(hv))
     function map_fun(::Val{name}) where {name}
-        segment_range = segment_ranges[name]
-        bc_unpacked = unpack_broadcast(bc, Val(name), segment_range)
-        result = Broadcast.materialize(bc_unpacked)
-        # If the original field was a scalar (Ref), extract the scalar from the result
-        original_field = hv_nt[name]
-        if original_field isa Ref
-            if result isa AbstractArray && length(result) == 1
-                result = result[1]
-            end
-        end
-        return result
+        bc_unpacked = unpack_broadcast(bc, Val(name), segment_ranges[name])
+        return Broadcast.materialize(bc_unpacked)
     end
     res_args = map(map_fun, Val.(Names))
     return HeterogeneousVector(NamedTuple{Names}(res_args))
@@ -513,9 +505,7 @@ end
         target_field = getfield(dest_nt, name)
         bc_unpacked = unpack_broadcast(bc, Val(name), segment_ranges[name])
         if target_field isa Ref
-            # Broadcast.materialize allocates an array of length 1. By indexing directly
-            # into the tree created by Broadcast.instantiate we can avoid that alloc.
-            target_field[] = Broadcast.instantiate(bc_unpacked)[1]
+            target_field[] = Broadcast.materialize(bc_unpacked)
         else
             Broadcast.materialize!(target_field, bc_unpacked)
         end

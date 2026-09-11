@@ -22,6 +22,10 @@ end
         f_fused(v1, v2) = @. exp(v1 / 1.0u"m") + v2 / 1.0u"m"
         expected_result_type = typeof(f_fused(x, y))
         @test (@inferred f_fused(x, y)) isa expected_result_type
+        # Mixed broadcast with a scalar field
+        v = [1.0, 2.0, 3.0]
+        mul_vec(hv, w) = hv .* w
+        @test (@inferred mul_vec(x, v)) isa type_hv
     end
 
     @testset "Concrete Type Structural Validation" begin
