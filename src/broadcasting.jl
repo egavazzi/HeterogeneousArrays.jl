@@ -10,18 +10,18 @@ struct MixedHeterogeneousVectorStyle{Names} <: AbstractHeterogeneousVectorStyle{
 Define the broadcast style for HeterogeneousVector to enable type-stable broadcasting.
 
 The HeterogeneousVector uses a custom broadcast style to ensure that broadcasting operations
-preserve the heterogeneous structure and field names. When multiple HeterogeneousVectors are 
+preserve the heterogeneous structure and field names. When multiple HeterogeneousVectors are
 involved in a broadcast operation, they must have compatible field names.
 
 # Broadcast Rules
 
-1. **Single HeterogeneousVector with other types**: The broadcast result preserves the 
+1. **Single HeterogeneousVector with other types**: The broadcast result preserves the
    HeterogeneousVector structure and field names.
 
-2. **Multiple HeterogeneousVectors with matching field names**: All vectors must have identical 
+2. **Multiple HeterogeneousVectors with matching field names**: All vectors must have identical
    field names; operations proceed field-by-field in parallel.
 
-3. **Multiple HeterogeneousVectors with different field names**: Throws an error to prevent 
+3. **Multiple HeterogeneousVectors with different field names**: Throws an error to prevent
    silent data corruption.
 
 # Examples
@@ -50,7 +50,7 @@ function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names1},
     error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
 end
 
-# This specialization ensures that  
+# This specialization ensures that
 function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
         ::PureHeterogeneousVectorStyle{Names}) where {Names}
     PureHeterogeneousVectorStyle{Names}()
@@ -172,7 +172,7 @@ end
     generate_info(F, Args, arg_path) = BcInfo(BcStyle, F, Args, arg_path)
     bc_stack = Vector{BcInfo{BcStyle}}()
     push!(bc_stack, generate_info(F, Args, :bc))
-    res_broadcast = nothing # We must declare this variable here in order to see changes after exiting the loop 
+    res_broadcast = nothing # We must declare this variable here in order to see changes after exiting the loop
     while !isempty(bc_stack)
         bc_info = pop!(bc_stack)
         expr = bc_info.expr
@@ -230,8 +230,8 @@ end
 
 Materialize a broadcast operation into a new HeterogeneousVector.
 
-When a broadcast expression involves a HeterogeneousVector, this method is called to 
-allocate and fill the result. The operation is performed field-by-field, allowing 
+When a broadcast expression involves a HeterogeneousVector, this method is called to
+allocate and fill the result. The operation is performed field-by-field, allowing
 type-stable operations on each segment independently.
 
 # Arguments
@@ -271,8 +271,8 @@ end
 
 Materialize a broadcast operation in-place into a HeterogeneousVector.
 
-The broadcast result is computed field-by-field and stored directly into the destination 
-vector's existing storage. For array fields, this uses `Broadcast.materialize!()` for 
+The broadcast result is computed field-by-field and stored directly into the destination
+vector's existing storage. For array fields, this uses `Broadcast.materialize!()` for
 in-place operations. For scalar fields, the result is assigned to the wrapped value.
 
 # Arguments
@@ -283,7 +283,7 @@ in-place operations. For scalar fields, the result is assigned to the wrapped va
 The modified `dest` vector
 
 # Errors
-- Throws `ArgumentError` if the broadcast expression involves a HeterogeneousVector with 
+- Throws `ArgumentError` if the broadcast expression involves a HeterogeneousVector with
   different field names than `dest`
 
 # Examples
@@ -358,12 +358,12 @@ end
 
 Materialize a HeterogeneousVector broadcast result into a flat AbstractArray.
 
-This is the "bridge" between structured heterogeneous data and standard numerical 
-solvers. It allows computing residuals or norms from mixed-unit data and 
+This is the "bridge" between structured heterogeneous data and standard numerical
+solvers. It allows computing residuals or norms from mixed-unit data and
 storing them in a plain, contiguous float array.
 
 # Storage Layout
-The result is flattened field-by-field according to the order in `Names`. 
+The result is flattened field-by-field according to the order in `Names`.
 For a vector with fields `pos` (length 2) and `time` (length 1):
 - `dest[1:2]` contains results from `pos`
 - `dest[3]` contains results from `time`
@@ -413,7 +413,7 @@ end
         segment_range) where {
         BcStyle <: MixedHeterogeneousVectorStyle, Axes, F, Args, field}
     generate_info(F, Args, arg_path) = BcInfo(BcStyle, F, Args, arg_path)
-    bc_stack = Vector{BcInfo{BcStyle}}()
+    bc_stack = Vector{BcInfo}()
     push!(bc_stack, generate_info(F, Args, :bc))
     res_broadcast = nothing
     while !isempty(bc_stack)
@@ -432,7 +432,11 @@ end
             i = bc_info.current_arg
             current_arg_expr = :(getfield($args_expr, $(i)))
             ArgT = arg_types[i]
-            if ArgT <: Broadcast.Broadcasted{BcStyle}
+            # Every nested broadcast tree must be unpacked, no matter its style: any
+            # heterogeneous vector or ordinary array it contains has to be reduced to the
+            # current field/segment, otherwise the full-length argument leaks into the
+            # per-field broadcast and the lengths might not match.
+            if ArgT <: Broadcast.Broadcasted
                 push!(bc_stack, bc_info)
                 new_info = BcInfo(ArgT, current_arg_expr)
                 push!(bc_stack, new_info)
