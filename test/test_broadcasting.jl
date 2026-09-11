@@ -96,6 +96,28 @@ end
         @test resu.pos == [2.0u"m", 8.0u"m"]
         @test resu.time == 60.0u"s"
     end
+    @testset "Mixed broadcast combined with default array styles" begin
+        # See #32 point 2: a mixed subtree meeting a scalar, a scalar subtree, or another
+        # default array style.
+        hv = HeterogeneousVector(a = [1.0, 2.0], b = 3.0)
+        v = [10.0, 20.0, 30.0]
+        w = [1.0, 2.0, 3.0]
+        res = (hv .+ v) .* 2.0
+        @test res.a == [22.0, 44.0]
+        @test res.b == 66.0
+        @test res.b isa Float64
+        res = 2.0 .* (hv .+ v)
+        @test res.a == [22.0, 44.0]
+        @test res.b == 66.0
+        res = hv .+ v .+ (2.0 .* 3.0)
+        @test res.a == [17.0, 28.0]
+        @test res.b == 39.0
+        res = (hv .+ v) .* w
+        @test res.a == [11.0, 44.0]
+        @test res.b == 99.0
+        array_2d = reshape([1.0, 2.0], 1, 2)
+        @test_throws ArgumentError (hv .+ v) .* array_2d
+    end
 end
 
 @testset "Multi-dimensional array broadcast is rejected" begin

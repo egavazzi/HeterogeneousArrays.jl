@@ -117,6 +117,22 @@ function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
     throw(ArgumentError("Cannot broadcast AbstractHeterogeneousVector with AbstractArray{$N}; only scalar and 1D array styles are supported"))
 end
 
+# The same three DefaultArrayStyle rules for the mixed style.
+function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
+        ::Base.Broadcast.DefaultArrayStyle{0}) where {Names}
+    MixedHeterogeneousVectorStyle{Names}()
+end
+
+function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
+        ::Base.Broadcast.DefaultArrayStyle{1}) where {Names}
+    MixedHeterogeneousVectorStyle{Names}()
+end
+
+function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
+        ::Base.Broadcast.DefaultArrayStyle{N}) where {Names, N}
+    throw(ArgumentError("Cannot broadcast AbstractHeterogeneousVector with AbstractArray{$N}; only scalar and 1D array styles are supported"))
+end
+
 # Helper function to find HeterogeneousVector in broadcast arguments
 function find_heterogeneous_vector(bc::Base.Broadcast.Broadcasted)
     find_heterogeneous_vector(bc.args)
