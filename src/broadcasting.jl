@@ -323,8 +323,7 @@ julia> v.b
 """
 @inline Base.@constprop :aggressive function Base.copyto!(
         dest::AbstractHeterogeneousVector{T, S},
-        bc::Broadcast.Broadcasted{
-            PureHeterogeneousVectorStyle{Names}, Axes, F, Args}
+        bc::Broadcast.Broadcasted{PureHeterogeneousVectorStyle{Names}, Axes, F, Args}
 ) where {T, S, Names, Axes, F, Args <: Tuple}
     if fieldnames(S) != Names
         throw(ArgumentError("Field name mismatch: $(fieldnames(S)) vs $(Names)"))
@@ -499,6 +498,48 @@ end
     end
     res_args = map(map_fun, Val.(Names))
     return HeterogeneousVector(NamedTuple{Names}(res_args))
+end
+
+@inline Base.@constprop :aggressive function Base.copyto!(
+        dest::AbstractHeterogeneousVector{T, S},
+        bc::Broadcast.Broadcasted{MixedHeterogeneousVectorStyle{Names}}
+) where {T, S, Names}
+    if fieldnames(S) != Names
+        throw(ArgumentError("Field name mismatch: $(fieldnames(S)) vs $(Names)"))
+    end
+    dest_nt = NamedTuple(dest)
+    segment_ranges = _compute_segment_ranges(dest_nt)
+    @inline function map_field(::Val{name}) where {name}
+        target_field = getfield(dest_nt, name)
+        bc_unpacked = unpack_broadcast(bc, Val(name), segment_ranges[name])
+        if target_field isa Ref
+            # Broadcast.materialize allocates an array of length 1. By indexing directly
+            # into the tree created by Broadcast.instantiate we can avoid that alloc.
+            target_field[] = Broadcast.instantiate(bc_unpacked)[1]
+        else
+            Broadcast.materialize!(target_field, bc_unpacked)
+        end
+        return nothing
+    end
+    map(map_field, Val.(Names))
+    return dest
+end
+
+@inline Base.@constprop :aggressive function Base.copyto!(
+        dest::AbstractArray,
+        bc::Broadcast.Broadcasted{MixedHeterogeneousVectorStyle{Names}}
+) where {Names}
+    hv = find_heterogeneous_vector(bc)
+    dest_idx = firstindex(dest)
+    segment_ranges = _compute_segment_ranges(NamedTuple(hv))
+    function map_fun(::Val{name}) where {name}
+        segment_range = segment_ranges[name]
+        bc_unpacked = unpack_broadcast(bc, Val(name), segment_range)
+        dest_segment = view(dest, dest_idx .+ segment_range)
+        Broadcast.materialize!(dest_segment, bc_unpacked)
+    end
+    map(map_fun, Val.(Names))
+    return dest
 end
 
 # Show methods for AbstractHeterogeneousVector

@@ -34,10 +34,26 @@ end
         @test (@inferred get_a_raw(x)) isa ConcreteRefType
     end
 
-    @testset "Zero-Allocation In-Place Updates" begin
+    @testset "Zero-Allocation In-Place Updates (Pure Broadcast)" begin
         dest = zero(x)
         compute_inplace!(dest, x, y)
         b = @benchmarkable compute_inplace!($dest, $x, $y)
+        res = run(b)
+        @test res.allocs == 0
+    end
+
+    @testset "Zero-Allocation In-Place Updates (Mixed Broadcast)" begin
+        hv = HeterogeneousVector(a = 1.0, b = [2.0, 3.0])
+        v = [1.0, 2.0, 3.0]
+        dest = zero(hv)
+        compute_inplace!(dest, hv, v)
+        b = @benchmarkable compute_inplace!($dest, $hv, $v)
+        res = run(b)
+        @test res.allocs == 0
+
+        flat = zeros(3)
+        compute_inplace!(flat, hv, v)
+        b = @benchmarkable compute_inplace!($flat, $hv, $v)
         res = run(b)
         @test res.allocs == 0
     end

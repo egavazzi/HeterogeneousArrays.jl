@@ -72,8 +72,6 @@ end
         @test res_broadcasted ≈ res_expected
     end
     @testset "Nested broadcast trees inside a mixed broadcast" begin
-        # See #32 point 1: every nested subtree must be reduced to the current
-        # field/segment, whatever its broadcast style.
         hv = HeterogeneousVector(a = [1.0, 2.0], b = 3.0)
         v = [10.0, 20.0, 30.0]
         # Pure-style subtree (`2.0 .* hv`) nested in a mixed broadcast
@@ -97,8 +95,6 @@ end
         @test resu.time == 60.0u"s"
     end
     @testset "Mixed broadcast combined with default array styles" begin
-        # See #32 point 2: a mixed subtree meeting a scalar, a scalar subtree, or another
-        # default array style.
         hv = HeterogeneousVector(a = [1.0, 2.0], b = 3.0)
         v = [10.0, 20.0, 30.0]
         w = [1.0, 2.0, 3.0]
