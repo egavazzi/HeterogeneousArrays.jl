@@ -91,7 +91,7 @@ end
         hvu = HeterogeneousVector(pos = [1.0u"m", 2.0u"m"], time = 10.0u"s")
         vu = [1.0, 2.0, 3.0]
         resu = 2.0 .* hvu .* vu
-        @test resu.pos  ≈ [2.0u"m", 8.0u"m"]
+        @test resu.pos ≈ [2.0u"m", 8.0u"m"]
         @test resu.time ≈ 60.0u"s"
     end
     @testset "Mixed broadcast combined with default array styles" begin
