@@ -44,46 +44,22 @@ function Base.BroadcastStyle(::Type{<:AbstractHeterogeneousVector{T, S}}) where 
     PureHeterogeneousVectorStyle{fieldnames(S)}()
 end
 
-# Broadcasting over HeterogeneousVectors with different fields yields an error
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names1},
-        ::PureHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
+# Broadcasting over HeterogeneousVectors with different field names yields an error
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names1},
+        ::AbstractHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
     error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
 end
 
-# This specialization ensures that
+# Two pure styles stay pure
 function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
         ::PureHeterogeneousVectorStyle{Names}) where {Names}
     PureHeterogeneousVectorStyle{Names}()
 end
 
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::MixedHeterogeneousVectorStyle{Names}) where {Names}
+# Every other pairing of styles with the same field names becomes mixed
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names},
+        ::AbstractHeterogeneousVectorStyle{Names}) where {Names}
     MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::MixedHeterogeneousVectorStyle{Names}) where {Names}
-    MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::PureHeterogeneousVectorStyle{Names}) where {Names}
-    MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names1},
-        ::MixedHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
-    error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
-end
-
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names1},
-        ::MixedHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
-    error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names1},
-        ::PureHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
-    error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
 end
 
 function Base.BroadcastStyle(style::AbstractHeterogeneousVectorStyle,
@@ -93,43 +69,29 @@ end
 
 # Any 1D array style (including custom styles) mixed with a heterogeneous vector
 # should produce mixed broadcasting semantics.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::Style) where {Names, Style <: Base.Broadcast.AbstractArrayStyle{1}}
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names},
+        ::Base.Broadcast.AbstractArrayStyle{1}) where {Names}
     MixedHeterogeneousVectorStyle{Names}()
 end
 
-# Explicitly handle DefaultArrayStyle to avoid ambiguity with Base.Broadcast rules.
-# Scalars keep pure style semantics.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{0}) where {Names}
-    PureHeterogeneousVectorStyle{Names}()
+# Explicitly handle DefaultArrayStyle to avoid ambiguity with the
+# `(AbstractArrayStyle, DefaultArrayStyle)` rules in Base.Broadcast.
+
+# A scalar leaves the style unchanged.
+function Base.BroadcastStyle(style::AbstractHeterogeneousVectorStyle,
+        ::Base.Broadcast.DefaultArrayStyle{0})
+    style
 end
 
 # Default 1D arrays should use mixed semantics.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names},
         ::Base.Broadcast.DefaultArrayStyle{1}) where {Names}
     MixedHeterogeneousVectorStyle{Names}()
 end
 
 # N-dimensional default arrays (except 0D and 1D handled above) are not supported.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{N}) where {Names, N}
-    throw(ArgumentError("Cannot broadcast AbstractHeterogeneousVector with AbstractArray{$N}; only scalar and 1D array styles are supported"))
-end
-
-# The same three DefaultArrayStyle rules for the mixed style.
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{0}) where {Names}
-    MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{1}) where {Names}
-    MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{N}) where {Names, N}
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle,
+        ::Base.Broadcast.DefaultArrayStyle{N}) where {N}
     throw(ArgumentError("Cannot broadcast AbstractHeterogeneousVector with AbstractArray{$N}; only scalar and 1D array styles are supported"))
 end
 
