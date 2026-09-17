@@ -7,8 +7,17 @@
 # followed by that unit once, instead of the verbose parametric `Quantity`
 # element type Julia would otherwise print for every element.
 
+# The vector's T parameter is only ever printed for a human in the header, so
+# collapse a Quantity type down to its bare numeric type there too: the units
+# are already shown next to each field, and the full dimension/FreeUnits
+# signature is redundant noise. `typeof(hv)`/`eltype(hv)`/`dump(hv)` still
+# expose the exact, unabbreviated type for anyone who needs it.
+_type_label(::Type{Union{}}) = Union{}
+_type_label(::Type{T}) where {T} = T
+_type_label(::Type{<:Unitful.AbstractQuantity{V}}) where {V} = V
+
 function Base.summary(io::IO, hv::AbstractHeterogeneousVector{T}) where {T}
-    print(io, length(hv), "-element ", nameof(typeof(hv)), "{", T,
+    print(io, length(hv), "-element ", nameof(typeof(hv)), "{", _type_label(T),
         "} with fields ", propertynames(hv))
 end
 

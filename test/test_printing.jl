@@ -17,11 +17,29 @@
         u0 = HeterogeneousVector(θ = 0.1u"rad", pos = [1.0, 2.0]u"m")
         str = text_plain(u0)
         @test str ==
-              "3-element HeterogeneousVector{Quantity{Float64}} with fields (:θ, :pos):\n" *
+              "3-element HeterogeneousVector{Float64} with fields (:θ, :pos):\n" *
               "  θ = 0.1 rad\n  pos = [1.0, 2.0] m"
-        # Verbose parametric Quantity type signature must be stripped for arrays.
+        # Verbose parametric Quantity type signature must be stripped, both
+        # from the header and from array fields.
         @test !occursin("FreeUnits", str)
-        @test !occursin("Quantity{Float64,", str)
+        @test !occursin("Quantity", str)
+    end
+
+    @testset "Header collapses Quantity{T,D,U} down to the bare numeric type" begin
+        # A single uniformly-unitted field used to leak the full
+        # Quantity{Int64, 𝐋, FreeUnits{(m,), 𝐋, nothing}} signature into the
+        # header; it should now just say Int64, matching the multi-field case
+        # above (units are already visible per field, so T need not repeat them).
+        v = HeterogeneousVector(a = collect(1:5) * u"m")
+        str = text_plain(v)
+        @test startswith(str, "5-element HeterogeneousVector{Int64} with fields (:a,):")
+        @test !occursin("FreeUnits", str)
+        @test !occursin("Quantity", str)
+
+        # The exact, unabbreviated type is still available for anyone who needs it.
+        @test eltype(v) == typeof(1 * u"m")
+        @test typeof(v) ==
+              HeterogeneousVector{typeof(1 * u"m"), @NamedTuple{a::Vector{typeof(1 * u"m")}}}
     end
 
     @testset "Multiple unit systems" begin
