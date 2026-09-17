@@ -39,7 +39,8 @@
         # The exact, unabbreviated type is still available for anyone who needs it.
         @test eltype(v) == typeof(1 * u"m")
         @test typeof(v) ==
-              HeterogeneousVector{typeof(1 * u"m"), @NamedTuple{a::Vector{typeof(1 * u"m")}}}
+              HeterogeneousVector{
+            typeof(1 * u"m"), @NamedTuple{a::Vector{typeof(1 * u"m")}}}
     end
 
     @testset "Multiple unit systems" begin
