@@ -493,9 +493,3 @@ end
     map(map_fun, Val.(Names))
     return dest
 end
-
-# Show methods for AbstractHeterogeneousVector
-Base.summary(hv::AbstractHeterogeneousVector) = string(typeof(hv), " with members:")
-function Base.show(io::IO, m::MIME"text/plain", hv::AbstractHeterogeneousVector)
-    show(io, m, NamedTuple(hv))
-end
