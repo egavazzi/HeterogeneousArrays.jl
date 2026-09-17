@@ -10,4 +10,5 @@ using OffsetArrays
     include("test_allocation.jl")
     include("test_nesting.jl")
     include("test_performance.jl")
+    include("test_printing.jl")
 end

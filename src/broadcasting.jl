@@ -480,9 +480,3 @@ end
     res_args = map(map_fun, Val.(Names))
     return HeterogeneousVector(NamedTuple{Names}(res_args))
 end
-
-# Show methods for AbstractHeterogeneousVector
-Base.summary(hv::AbstractHeterogeneousVector) = string(typeof(hv), " with members:")
-function Base.show(io::IO, m::MIME"text/plain", hv::AbstractHeterogeneousVector)
-    show(io, m, NamedTuple(hv))
-end
