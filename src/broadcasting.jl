@@ -10,18 +10,18 @@ struct MixedHeterogeneousVectorStyle{Names} <: AbstractHeterogeneousVectorStyle{
 Define the broadcast style for HeterogeneousVector to enable type-stable broadcasting.
 
 The HeterogeneousVector uses a custom broadcast style to ensure that broadcasting operations
-preserve the heterogeneous structure and field names. When multiple HeterogeneousVectors are 
+preserve the heterogeneous structure and field names. When multiple HeterogeneousVectors are
 involved in a broadcast operation, they must have compatible field names.
 
 # Broadcast Rules
 
-1. **Single HeterogeneousVector with other types**: The broadcast result preserves the 
+1. **Single HeterogeneousVector with other types**: The broadcast result preserves the
    HeterogeneousVector structure and field names.
 
-2. **Multiple HeterogeneousVectors with matching field names**: All vectors must have identical 
+2. **Multiple HeterogeneousVectors with matching field names**: All vectors must have identical
    field names; operations proceed field-by-field in parallel.
 
-3. **Multiple HeterogeneousVectors with different field names**: Throws an error to prevent 
+3. **Multiple HeterogeneousVectors with different field names**: Throws an error to prevent
    silent data corruption.
 
 # Examples
@@ -44,46 +44,22 @@ function Base.BroadcastStyle(::Type{<:AbstractHeterogeneousVector{T, S}}) where 
     PureHeterogeneousVectorStyle{fieldnames(S)}()
 end
 
-# Broadcasting over HeterogeneousVectors with different fields yields an error
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names1},
-        ::PureHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
+# Broadcasting over HeterogeneousVectors with different field names yields an error
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names1},
+        ::AbstractHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
     error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
 end
 
-# This specialization ensures that  
+# Two pure styles stay pure
 function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
         ::PureHeterogeneousVectorStyle{Names}) where {Names}
     PureHeterogeneousVectorStyle{Names}()
 end
 
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::MixedHeterogeneousVectorStyle{Names}) where {Names}
+# Every other pairing of styles with the same field names becomes mixed
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names},
+        ::AbstractHeterogeneousVectorStyle{Names}) where {Names}
     MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::MixedHeterogeneousVectorStyle{Names}) where {Names}
-    MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names},
-        ::PureHeterogeneousVectorStyle{Names}) where {Names}
-    MixedHeterogeneousVectorStyle{Names}()
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names1},
-        ::MixedHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
-    error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
-end
-
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names1},
-        ::MixedHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
-    error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
-end
-
-function Base.BroadcastStyle(::MixedHeterogeneousVectorStyle{Names1},
-        ::PureHeterogeneousVectorStyle{Names2}) where {Names1, Names2}
-    error("Cannot broadcast heterogeneous vectors with different field names: $(Names1) vs $(Names2)")
 end
 
 function Base.BroadcastStyle(style::AbstractHeterogeneousVectorStyle,
@@ -93,27 +69,29 @@ end
 
 # Any 1D array style (including custom styles) mixed with a heterogeneous vector
 # should produce mixed broadcasting semantics.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::Style) where {Names, Style <: Base.Broadcast.AbstractArrayStyle{1}}
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names},
+        ::Base.Broadcast.AbstractArrayStyle{1}) where {Names}
     MixedHeterogeneousVectorStyle{Names}()
 end
 
-# Explicitly handle DefaultArrayStyle to avoid ambiguity with Base.Broadcast rules.
-# Scalars keep pure style semantics.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{0}) where {Names}
-    PureHeterogeneousVectorStyle{Names}()
+# Explicitly handle DefaultArrayStyle to avoid ambiguity with the
+# `(AbstractArrayStyle, DefaultArrayStyle)` rules in Base.Broadcast.
+
+# A scalar leaves the style unchanged.
+function Base.BroadcastStyle(style::AbstractHeterogeneousVectorStyle,
+        ::Base.Broadcast.DefaultArrayStyle{0})
+    style
 end
 
 # Default 1D arrays should use mixed semantics.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle{Names},
         ::Base.Broadcast.DefaultArrayStyle{1}) where {Names}
     MixedHeterogeneousVectorStyle{Names}()
 end
 
 # N-dimensional default arrays (except 0D and 1D handled above) are not supported.
-function Base.BroadcastStyle(::PureHeterogeneousVectorStyle{Names},
-        ::Base.Broadcast.DefaultArrayStyle{N}) where {Names, N}
+function Base.BroadcastStyle(::AbstractHeterogeneousVectorStyle,
+        ::Base.Broadcast.DefaultArrayStyle{N}) where {N}
     throw(ArgumentError("Cannot broadcast AbstractHeterogeneousVector with AbstractArray{$N}; only scalar and 1D array styles are supported"))
 end
 
@@ -172,7 +150,7 @@ end
     generate_info(F, Args, arg_path) = BcInfo(BcStyle, F, Args, arg_path)
     bc_stack = Vector{BcInfo{BcStyle}}()
     push!(bc_stack, generate_info(F, Args, :bc))
-    res_broadcast = nothing # We must declare this variable here in order to see changes after exiting the loop 
+    res_broadcast = nothing # We must declare this variable here in order to see changes after exiting the loop
     while !isempty(bc_stack)
         bc_info = pop!(bc_stack)
         expr = bc_info.expr
@@ -230,8 +208,8 @@ end
 
 Materialize a broadcast operation into a new HeterogeneousVector.
 
-When a broadcast expression involves a HeterogeneousVector, this method is called to 
-allocate and fill the result. The operation is performed field-by-field, allowing 
+When a broadcast expression involves a HeterogeneousVector, this method is called to
+allocate and fill the result. The operation is performed field-by-field, allowing
 type-stable operations on each segment independently.
 
 # Arguments
@@ -271,8 +249,8 @@ end
 
 Materialize a broadcast operation in-place into a HeterogeneousVector.
 
-The broadcast result is computed field-by-field and stored directly into the destination 
-vector's existing storage. For array fields, this uses `Broadcast.materialize!()` for 
+The broadcast result is computed field-by-field and stored directly into the destination
+vector's existing storage. For array fields, this uses `Broadcast.materialize!()` for
 in-place operations. For scalar fields, the result is assigned to the wrapped value.
 
 # Arguments
@@ -283,7 +261,7 @@ in-place operations. For scalar fields, the result is assigned to the wrapped va
 The modified `dest` vector
 
 # Errors
-- Throws `ArgumentError` if the broadcast expression involves a HeterogeneousVector with 
+- Throws `ArgumentError` if the broadcast expression involves a HeterogeneousVector with
   different field names than `dest`
 
 # Examples
@@ -307,8 +285,7 @@ julia> v.b
 """
 @inline Base.@constprop :aggressive function Base.copyto!(
         dest::AbstractHeterogeneousVector{T, S},
-        bc::Broadcast.Broadcasted{
-            PureHeterogeneousVectorStyle{Names}, Axes, F, Args}
+        bc::Broadcast.Broadcasted{PureHeterogeneousVectorStyle{Names}, Axes, F, Args}
 ) where {T, S, Names, Axes, F, Args <: Tuple}
     if fieldnames(S) != Names
         throw(ArgumentError("Field name mismatch: $(fieldnames(S)) vs $(Names)"))
@@ -327,43 +304,45 @@ julia> v.b
     return dest
 end
 
-# Compute segment ranges for each field in the NamedTuple
-# The results are zero-indexed ranges, i.e. the first field starts at 0
+# Compute the segment of each field in the NamedTuple
+# The results are zero-indexed, i.e. the first field starts at 0
 function _compute_segment_ranges(x::NamedTuple)
-    # We need zero-based contiguous ranges for each field in order.
     # NOTE: Iterating a NamedTuple iterates its values, which is what we want for lengths.
     n = length(x)
     if n == 0
         return NamedTuple()
     end
-    # Collect lengths without allocating intermediate vectors where possible.
     # map over NamedTuple returns a tuple, so we can splat into cumsum input.
     field_lengths = map(_field_length, x)  # tuple of Int
     # Build prefix sums starting with 0 (zero-based indexing for segments).
     # We avoid concatenations like [0; ...] by constructing a tuple directly.
     segment_ends = cumsum((0, field_lengths...))  # length n+1 tuple
-    # Create the range for each field i: segment_ends[i] : segment_ends[i+1]-1
-    ranges = ntuple(i -> begin
-            s = segment_ends[i]
-            e = segment_ends[i + 1] - 1
-            s:e
-        end, n)
+    # Field i occupies segment_ends[i] : segment_ends[i+1]-1
+    ranges = ntuple(i -> segment(x[i], segment_ends[i], segment_ends[i + 1] - 1), n)
     # Extract the compile-time field name tuple from the NamedTuple type for a fully-typed result.
     names = fieldnames(typeof(x))
     return NamedTuple{names}(ranges)
 end
+
+# The segment of a field in the flattened layout, given its zero-based first and last
+# offsets. A scalar (Ref) field yields a single Int so that indexing an ordinary array
+# with it produces a scalar (or a 0-dimensional view). This has the benefit of keeping the
+# per-field broadcast for that field 0-dimensional and lets `materialize` return a scalar.
+# An array field yields a UnitRange.
+segment(::Ref, s, e) = s
+segment(::AbstractArray, s, e) = s:e
 
 """
     Base.copyto!(dest::AbstractArray, bc::Broadcast.Broadcasted{Broadcast.Style{AbstractHeterogeneousVector{Names}}})
 
 Materialize a HeterogeneousVector broadcast result into a flat AbstractArray.
 
-This is the "bridge" between structured heterogeneous data and standard numerical 
-solvers. It allows computing residuals or norms from mixed-unit data and 
+This is the "bridge" between structured heterogeneous data and standard numerical
+solvers. It allows computing residuals or norms from mixed-unit data and
 storing them in a plain, contiguous float array.
 
 # Storage Layout
-The result is flattened field-by-field according to the order in `Names`. 
+The result is flattened field-by-field according to the order in `Names`.
 For a vector with fields `pos` (length 2) and `time` (length 1):
 - `dest[1:2]` contains results from `pos`
 - `dest[3]` contains results from `time`
@@ -413,7 +392,7 @@ end
         segment_range) where {
         BcStyle <: MixedHeterogeneousVectorStyle, Axes, F, Args, field}
     generate_info(F, Args, arg_path) = BcInfo(BcStyle, F, Args, arg_path)
-    bc_stack = Vector{BcInfo{BcStyle}}()
+    bc_stack = Vector{BcInfo}()
     push!(bc_stack, generate_info(F, Args, :bc))
     res_broadcast = nothing
     while !isempty(bc_stack)
@@ -432,7 +411,11 @@ end
             i = bc_info.current_arg
             current_arg_expr = :(getfield($args_expr, $(i)))
             ArgT = arg_types[i]
-            if ArgT <: Broadcast.Broadcasted{BcStyle}
+            # Every nested broadcast tree must be unpacked, no matter its style: any
+            # heterogeneous vector or ordinary array it contains has to be reduced to the
+            # current field/segment, otherwise the full-length argument leaks into the
+            # per-field broadcast and the lengths might not match.
+            if ArgT <: Broadcast.Broadcasted
                 push!(bc_stack, bc_info)
                 new_info = BcInfo(ArgT, current_arg_expr)
                 push!(bc_stack, new_info)
@@ -462,21 +445,57 @@ end
         bc::Broadcast.Broadcasted{MixedHeterogeneousVectorStyle{Names}}
 ) where {Names}
     hv = find_heterogeneous_vector(bc)
-    hv_nt = NamedTuple(hv)
-    segment_ranges = _compute_segment_ranges(hv_nt)
+    segment_ranges = _compute_segment_ranges(NamedTuple(hv))
     function map_fun(::Val{name}) where {name}
-        segment_range = segment_ranges[name]
-        bc_unpacked = unpack_broadcast(bc, Val(name), segment_range)
-        result = Broadcast.materialize(bc_unpacked)
-        # If the original field was a scalar (Ref), extract the scalar from the result
-        original_field = hv_nt[name]
-        if original_field isa Ref
-            if result isa AbstractArray && length(result) == 1
-                result = result[1]
-            end
-        end
-        return result
+        bc_unpacked = unpack_broadcast(bc, Val(name), segment_ranges[name])
+        return Broadcast.materialize(bc_unpacked)
     end
     res_args = map(map_fun, Val.(Names))
     return HeterogeneousVector(NamedTuple{Names}(res_args))
+end
+
+@inline Base.@constprop :aggressive function Base.copyto!(
+        dest::AbstractHeterogeneousVector{T, S},
+        bc::Broadcast.Broadcasted{MixedHeterogeneousVectorStyle{Names}}
+) where {T, S, Names}
+    if fieldnames(S) != Names
+        throw(ArgumentError("Field name mismatch: $(fieldnames(S)) vs $(Names)"))
+    end
+    dest_nt = NamedTuple(dest)
+    segment_ranges = _compute_segment_ranges(dest_nt)
+    @inline function map_field(::Val{name}) where {name}
+        target_field = getfield(dest_nt, name)
+        bc_unpacked = unpack_broadcast(bc, Val(name), segment_ranges[name])
+        if target_field isa Ref
+            target_field[] = Broadcast.materialize(bc_unpacked)
+        else
+            Broadcast.materialize!(target_field, bc_unpacked)
+        end
+        return nothing
+    end
+    map(map_field, Val.(Names))
+    return dest
+end
+
+@inline Base.@constprop :aggressive function Base.copyto!(
+        dest::AbstractArray,
+        bc::Broadcast.Broadcasted{MixedHeterogeneousVectorStyle{Names}}
+) where {Names}
+    hv = find_heterogeneous_vector(bc)
+    dest_idx = firstindex(dest)
+    segment_ranges = _compute_segment_ranges(NamedTuple(hv))
+    function map_fun(::Val{name}) where {name}
+        segment_range = segment_ranges[name]
+        bc_unpacked = unpack_broadcast(bc, Val(name), segment_range)
+        dest_segment = view(dest, dest_idx .+ segment_range)
+        Broadcast.materialize!(dest_segment, bc_unpacked)
+    end
+    map(map_fun, Val.(Names))
+    return dest
+end
+
+# Show methods for AbstractHeterogeneousVector
+Base.summary(hv::AbstractHeterogeneousVector) = string(typeof(hv), " with members:")
+function Base.show(io::IO, m::MIME"text/plain", hv::AbstractHeterogeneousVector)
+    show(io, m, NamedTuple(hv))
 end

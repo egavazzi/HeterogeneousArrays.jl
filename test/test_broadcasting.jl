@@ -71,6 +71,49 @@ end
         res_expected = HeterogeneousVector(length = 1.0u"m", mass = 2.0u"kg", time = 3.0u"s")
         @test res_broadcasted ≈ res_expected
     end
+    @testset "Nested broadcast trees inside a mixed broadcast" begin
+        hv = HeterogeneousVector(a = [1.0, 2.0], b = 3.0)
+        v = [10.0, 20.0, 30.0]
+        # Pure-style subtree (`2.0 .* hv`) nested in a mixed broadcast
+        res = 2.0 .* hv .+ v
+        @test res.a ≈ [12.0, 24.0]
+        @test res.b ≈ 36.0
+        @test res.b isa Float64
+        # Default 1-D array-style subtree (`v .* 2.0`) nested in a mixed broadcast
+        res = hv .+ (v .* 2.0)
+        @test res.a ≈ [21.0, 42.0]
+        @test res.b ≈ 63.0
+        # Both kinds of subtree at once, in a deeper tree
+        res = (2.0 .* hv) .- (v .* 2.0) .+ hv
+        @test res.a ≈ [-17.0, -34.0]
+        @test res.b ≈ -51.0
+        # Nested pure subtree with units
+        hvu = HeterogeneousVector(pos = [1.0u"m", 2.0u"m"], time = 10.0u"s")
+        vu = [1.0, 2.0, 3.0]
+        resu = 2.0 .* hvu .* vu
+        @test resu.pos ≈ [2.0u"m", 8.0u"m"]
+        @test resu.time ≈ 60.0u"s"
+    end
+    @testset "Mixed broadcast combined with default array styles" begin
+        hv = HeterogeneousVector(a = [1.0, 2.0], b = 3.0)
+        v = [10.0, 20.0, 30.0]
+        w = [1.0, 2.0, 3.0]
+        res = (hv .+ v) .* 2.0
+        @test res.a ≈ [22.0, 44.0]
+        @test res.b ≈ 66.0
+        @test res.b isa Float64
+        res = 2.0 .* (hv .+ v)
+        @test res.a ≈ [22.0, 44.0]
+        @test res.b ≈ 66.0
+        res = hv .+ v .+ (2.0 .* 3.0)
+        @test res.a ≈ [17.0, 28.0]
+        @test res.b ≈ 39.0
+        res = (hv .+ v) .* w
+        @test res.a ≈ [11.0, 44.0]
+        @test res.b ≈ 99.0
+        array_2d = reshape([1.0, 2.0], 1, 2)
+        @test_throws ArgumentError (hv .+ v) .* array_2d
+    end
 end
 
 @testset "Multi-dimensional array broadcast is rejected" begin
