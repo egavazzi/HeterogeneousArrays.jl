@@ -96,6 +96,28 @@
         @test occursin("2.0 s", str)
     end
 
+    @testset "Unsupported quantity-like element types fall back to default display" begin
+        # `_show_field` only special-cases Unitful.AbstractQuantity. Packages
+        # such as DynamicQuantities.jl provide their own, unrelated quantity
+        # type, so arrays of them take the generic `show(io, x)` fallback and
+        # print every element in full (type name and unit repeated per
+        # element) instead of being stripped down to a single shared unit.
+        # This is uglier but must keep working; this test pins that fallback
+        # behavior with a minimal in-file stand-in so it doesn't require
+        # adding DynamicQuantities as a test dependency.
+        struct FakeQuantity{T} <: Number
+            value::T
+            unit::Symbol
+        end
+        Base.show(io::IO, q::FakeQuantity) = print(io, q.value, " ", q.unit)
+
+        v = HeterogeneousVector(a = [FakeQuantity(2.2, :kms), FakeQuantity(9.2, :kms)])
+        str = text_plain(v)
+        @test occursin("a = ", str)
+        @test occursin("2.2 kms", str)
+        @test occursin("9.2 kms", str)
+    end
+
     @testset "3-arg show is unaffected" begin
         v = HeterogeneousVector(x = 1.0, y = [1, 2, 3])
         # The compact single-line show (e.g. used inside a container) keeps
