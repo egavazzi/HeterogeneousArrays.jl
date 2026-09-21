@@ -67,6 +67,10 @@ function CollectionVector(nt::NamedTuple)
     end
     # Initialize the storage vector
     T = promote_type(map(rawnumtype, values(nt))...)
+    # Fields are accessed through a `reinterpret` view over the storage vector, which
+    # supports isbits number type (e.g. Float64, Float32, Int, ForwardDiff.Dual, etc but not
+    # something like BigFloat).
+    isbitstype(T) || throw(ArgumentError("CollectionVector storage type must be an isbits number type, got $T"))
     data = Vector{T}(undef, sum(map(fieldlen, values(nt))))
     # Walk through the fields, record values in the storage vector (`data`) and their
     # slot/unit in a `specs` vector
@@ -173,8 +177,9 @@ shapeof(::CollectionVector{T, S}) where {T, S} = S
 
 
 
-## Tooling to access and modidy whole property/fields of CollectionVector
+## Tooling to access and modidy property/fields of a CollectionVector
 # e.g. x.pos = [3.0, 4.0]u"cm"
+# e.g. x.pos[1] = 1.0u"cm"
 @inline Base.@constprop :aggressive function Base.getproperty(
         x::CollectionVector{T, S}, name::Symbol) where {T, S}
     if haskey(S, name)
@@ -185,7 +190,7 @@ shapeof(::CollectionVector{T, S}) where {T, S} = S
     end
 end
 @inline fieldview(data, i::Int, u) = data[i] * u
-@inline fieldview(data, r::UnitRange{Int}, u) = UnitfulSlice(view(data, r), u)
+@inline fieldview(data, r::UnitRange{Int}, u) = reinterpret(slotelt(eltype(data), u), view(data, r))
 
 
 @inline Base.@constprop :aggressive function Base.setproperty!(
@@ -228,48 +233,6 @@ materialize_field(data, r::UnitRange{Int}, u) = data[r] .* u
 
 
 
-
-
-
-
-
-
-
-
-## Tooling to access and modify a segment of raw storage in place
-# e.g. x.pos[1] = 50u"cm"
-# The goal is to avoid creating/allocating a subarray, and instead use a view directly on
-# the raw storage vector, but with units.
-"""
-    UnitfulSlice(data::AbstractVector, u::Unitful.FreeUnits)
-
-A lazy, unit-attaching view over a segment of raw storage.
-
-Reading `slice[i]` returns `data[i] * u` (a `Unitful.Quantity`). Writing `slice[i] = val`
-converts `val` to unit `u` and stores the stripped value, throwing a
-`Unitful.DimensionError` if the dimensions do not match.
-"""
-struct UnitfulSlice{Q, U, D <: AbstractVector} <: AbstractVector{Q}
-    data::D
-
-    function UnitfulSlice(data::AbstractVector{T}, u::Unitful.FreeUnits) where {T <: Number}
-        Q = typeof(one(T) * u)
-        new{Q, u, typeof(data)}(data)
-    end
-end
-
-Base.size(s::UnitfulSlice) = size(getfield(s, :data))
-
-# TODO: play with @boundscheck/@inbounds?
-@inline function Base.getindex(s::UnitfulSlice{Q, U}, i::Int) where {Q, U}
-    return getfield(s, :data)[i] * U
-end
-
-# TODO: play with @boundscheck/@inbounds?
-@inline function Base.setindex!(s::UnitfulSlice{Q, U}, val, i::Int) where {Q, U}
-    getfield(s, :data)[i] = ustrip(U, val)
-    return val
-end
 
 
 
