@@ -134,9 +134,21 @@ fieldlen(v::AbstractArray) = length(v)
 
 ## Tooling to attach/detach units of a whole CollectionVector at once
 """
+    rawdata(x) -> AbstractVector
+
+Access the raw (unitless) storage of a `CollectionVector` (identity on other vectors).
+"""
+rawdata(x::CollectionVector) = getfield(x, :data)
+rawdata(x::AbstractVector) = x
+
+Unitful.ustrip(x::CollectionVector) = rawdata(x)
+
+"""
     attach(S::NamedTuple, data::AbstractVector) -> CollectionVector
 
-Wrap raw storage `data` with shape `S`, re-attaching structure and units with zero copy.
+Wrap raw storage `data` with a shape parameter `S` to create a `CollectionVector`.
+The shape parameter of an existing CollectionVector can be accessed with the
+[`shapeof`](@ref) function.
 """
 @inline function attach(S::NamedTuple, data::AbstractVector)
     length(data) == shape_length(S) || throw(DimensionMismatch(
@@ -147,21 +159,11 @@ shape_length(S::NamedTuple) = sum(spec -> spec_len(spec[1]), values(S))
 spec_len(r::UnitRange{Int}) = length(r)
 spec_len(::Int) = 1
 
-
-"""
-    rawdata(x) -> AbstractVector
-
-Access the flat unitless storage of a `CollectionVector` (identity on other vectors).
-"""
-rawdata(x::CollectionVector) = getfield(x, :data)
-rawdata(x::AbstractVector) = x
-
-Unitful.ustrip(x::CollectionVector) = rawdata(x)
-
 """
     shapeof(x::CollectionVector) -> NamedTuple
 
-The compile-time shape: a NamedTuple mapping field names to `(slot, unit)`.
+The compile-time shape of a `CollectionVector`: a NamedTuple mapping field names to
+`(slot, unit)`.
 """
 shapeof(::CollectionVector{T, S}) where {T, S} = S
 
