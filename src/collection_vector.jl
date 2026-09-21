@@ -54,7 +54,14 @@ the same dimension are converted to the unit of their first element.
 struct CollectionVector{T, S, D <: AbstractVector{T}, E} <: AbstractVector{E}
     data::D
 
-    CollectionVector{T, S, D, E}(data) where {T, S, D, E} = new{T, S, D, E}(data)
+    function CollectionVector{T, S, D, E}(data) where {T, S, D, E}
+        # Fields are accessed through a `reinterpret` view over the storage vector, which
+        # supports isbits number type (e.g. Float64, Float32, Int, ForwardDiff.Dual, etc
+        # but not something like BigFloat).
+        isbitstype(T) || throw(ArgumentError(
+            "CollectionVector storage type must be an isbits number type, got $T"))
+        return new{T, S, D, E}(data)
+    end
 end
 
 # Constructor from a NamedTuple
@@ -67,10 +74,6 @@ function CollectionVector(nt::NamedTuple)
     end
     # Initialize the storage vector
     T = promote_type(map(rawnumtype, values(nt))...)
-    # Fields are accessed through a `reinterpret` view over the storage vector, which
-    # supports isbits number type (e.g. Float64, Float32, Int, ForwardDiff.Dual, etc but not
-    # something like BigFloat).
-    isbitstype(T) || throw(ArgumentError("CollectionVector storage type must be an isbits number type, got $T"))
     data = Vector{T}(undef, sum(map(fieldlen, values(nt))))
     # Walk through the fields, record values in the storage vector (`data`) and their
     # slot/unit in a `specs` vector
