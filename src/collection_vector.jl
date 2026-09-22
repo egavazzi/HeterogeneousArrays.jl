@@ -1,23 +1,11 @@
-#=
-Design contract:
-- Storage is a flat vector of plain numbers, reached through `rawdata(x)`.
-- Everything user-facing is unitful. Flat indexing (`x[i]`) attaches the unit of the field
-    owning slot `i`, and `x[i] = v` converts `v` into that unit or throws. Property
-    access (`x.θ`, `x.pos`) does the same.
-
-The shape parameter `S` is an isbits NamedTuple value of the form
-    (θ = (1, u"rad"), pos = (2:4, u"m"), ...)
-mapping each field to its slot (Int for scalars, UnitRange for arrays) and its storage unit.
-=#
-
-using Unitful: ustrip, unit, dimension, upreferred, NoUnits
+using Unitful: ustrip, unit
 
 """
     CollectionVector{T, S, D, E} <: AbstractVector{E}
 
 A structured state vector with flat, contiguous, unitless storage of eltype `T`
-and compile-time shape `S` (field names, slot ranges, and units). `E` is the
-`Union` of the per-field element types `typeof(one(T) * u)`, and is determined
+and compile-time shape `S` (field names, slot ranges, and field types). `E` is the
+`Union` of the per-field element types `elementtype(T, field_type)`, and is determined
 by `T` and `S`.
 
 Elements are unitful: both flat indexing and property access attach the unit of
@@ -64,32 +52,154 @@ struct CollectionVector{T, S, D <: AbstractVector{T}, E} <: AbstractVector{E}
     end
 end
 
-# Constructor from a NamedTuple
+
+
+
+
+
+
+## Element type compatibility API
+# What the container needs to know about an element type `Q`
+#   isstorable(Q)         -> Bool          opt-in gate; false by default, true for supported types
+#   rawtype(Q)            -> Type          plain isbits number type stored for a `Q` (storage vector eltype)
+#   field_type(q)         -> isbits value  what identifies the field's elements once the raw
+#                                          number is removed (a unit, `nothing`, ...); goes into `S`
+#   strip_type(ft, q)     -> raw number    convert `q` to the field type `ft` and strip, or throw
+#                                          if conversion fails
+#   attach_type(ft, x)    -> element       inverse of `strip_type`: attach the field type `ft`
+#                                          to a raw number `x` to get an element
+#   elementtype(T, ft)    -> Type          element type seen through the container; must have the
+#                                          memory layout of `slotcount(ft)` consecutive `T`s
+#   slotcount(ft)         -> Int           raw numbers per element (default 1)
+# Elements that occupy several slots implement `strip_slots!`/`attach_slots` instead of the
+# scalar `strip_type`/`attach_type` (see `Complex` below).
+
+isstorable(::Type) = false
+rawtype(::Type{Q}) where {Q <: Number} = typeof(one(Q))   # `one` is unitless in every unit package
+function field_type end
+function strip_type end
+function attach_type end
+function elementtype end
+slotcount(ft) = 1
+
+# Slot-level versions used by the container: default to the scalar API (one slot per element).
+strip_slots!(slots, ft, q) = (slots[1] = strip_type(ft, q); slots)
+attach_slots(ft, slots) = attach_type(ft, slots[1])
+
+# Plain real numbers: no unit. Field type set to `nothing`.
+isstorable(::Type{<:Real}) = true
+field_type(::Real) = nothing
+strip_type(::Nothing, x::Real) = x
+attach_type(::Nothing, x) = x
+elementtype(::Type{T}, ::Nothing) where {T} = T
+
+# Unitful quantities: the field type is the unit.
+isstorable(::Type{<:Unitful.Quantity{<:Real}}) = true
+field_type(q::Unitful.Quantity) = unit(q)
+strip_type(u::Unitful.Units, q::Unitful.Quantity) = ustrip(u, q)
+strip_type(u::Unitful.Units, x::Real) = ustrip(u, x) # use DimensionError message of Unitful
+attach_type(u::Unitful.Units, x) = x * u
+elementtype(::Type{T}, u::Unitful.Units) where {T} = typeof(one(T) * u)
+
+# Complex numbers: two real slots per element, so the storage stays real (solvers and
+# ForwardDiff only ever see reals; the RHS sees `Complex{T}` through the reinterpret view).
+# TODO: support complex *quantities* (`[1+2im]u"m"`) (we require Unitful.Quantity{<:Real} above)
+isstorable(::Type{<:Complex{<:Real}}) = true
+rawtype(::Type{Complex{T}}) where {T} = T # storage eltype is the real part type
+struct ComplexParts end
+field_type(::Complex) = ComplexParts()    # custom field type
+slotcount(::ComplexParts) = 2
+elementtype(::Type{T}, ::ComplexParts) where {T} = Complex{T}
+strip_slots!(slots, ::ComplexParts, z::Number) = (slots[1] = real(z); slots[2] = imag(z); slots)
+attach_slots(::ComplexParts, slots) = Complex(slots[1], slots[2])
+
+# Constructor helpers built on the API
+firstelem(v::AbstractArray) = first(v)
+firstelem(v) = v
+fieldlen(v::AbstractArray) = length(v)
+fieldlen(v) = 1
+
+# The gate: is the element type of this field supported?
+# TODO: right now we check for a manual isstorable implementation. Could check for
+# `hasmethod` on the needed functions instead.
+function checkelement(name, v)
+    Q = typeof(firstelem(v))
+    isstorable(Q) || throw(ArgumentError(
+        "Field '$name' has element type $Q, which CollectionVector does not support. " *
+        "Implement isstorable, rawtype, field_type, strip_type, attach_type and elementtype for it."))
+    return nothing
+end
+
+# Storage type contributed by a field: promoted over all its elements
+fieldrawtype(v::AbstractArray) = promote_type(map(x -> rawtype(typeof(x)), v)...)
+fieldrawtype(v) = rawtype(typeof(v))
+
+# The reinterpret view over an array field is only legitimate if an element is laid out
+# exactly like `slotcount(ft)` consecutive raw numbers.
+function checklayout(name, ::Type{T}, ft) where {T}
+    Q = elementtype(T, ft)
+    sizeof(Q) == slotcount(ft) * sizeof(T) || throw(ArgumentError(
+        "Field '$name': elements of type $Q do not have the memory layout of $(slotcount(ft)) $T slot(s)"))
+    return nothing
+end
+
+# Convert one element into the field's slots, wrapping any error with field context.
+function stripelement!(slots, name, i, ft, q)
+    try
+        strip_slots!(slots, ft, q)
+    catch e
+        where = i === nothing ? "value" : "element $i"
+        throw(ArgumentError("Field '$name': $where is $q, which cannot be expressed in the " *
+            "field's type $ft (taken from the first element). Cause: $(sprint(showerror, e))"))
+    end
+    return nothing
+end
+
+
+
+
+
+
+
+
+
+## Constructor from a NamedTuple
 function CollectionVector(nt::NamedTuple)
-    # Check for empty fields
+    # Check for empty fields and for unsupported element types, before anything else
     isempty(nt) && throw(ArgumentError("CollectionVector requires at least one field"))
     for (name, v) in pairs(nt)
         v isa AbstractArray && isempty(v) &&
             throw(ArgumentError("Field '$name' is an empty array. Empty fields are not supported"))
+        checkelement(name, v)
     end
-    # Initialize the storage vector
-    T = promote_type(map(rawnumtype, values(nt))...)
-    data = Vector{T}(undef, sum(map(fieldlen, values(nt))))
+    # Storage type: promoted over all fields, must be isbits (checked again in the inner
+    # constructor, but here the error comes before any conversion is attempted)
+    # TODO: Idk if we need it here in addition to the inner constructor. But better safe than sorry.
+    T = promote_type(map(fieldrawtype, values(nt))...)
+    isbitstype(T) || throw(ArgumentError(
+        "CollectionVector storage type must be an isbits number type, got $T"))
+    # The field type of a field is that of its first element; every other element is converted
+    # into it or rejected with a clear message. An element occupies `slotcount(ft)` slots.
+    fts = map(v -> field_type(firstelem(v)), values(nt))
+    foreach((name, ft) -> checklayout(name, T, ft), keys(nt), fts)
+    data = Vector{T}(undef, sum(map((v, ft) -> fieldlen(v) * slotcount(ft), values(nt), fts)))
     # Walk through the fields, record values in the storage vector (`data`) and their
-    # slot/unit in a `specs` vector
+    # slot/field type in a `specs` vector
     offset = 0
     specs = Any[]
-    for v in values(nt)
-        u = fieldunit(v)
+    for (name, v, ft) in zip(keys(nt), values(nt), fts)
+        k = slotcount(ft)
         if v isa AbstractArray
-            r = (offset + 1):(offset + length(v))
-            data[r] .= ustrip.(Ref(u), v)
-            push!(specs, (r, u))
-            offset += length(v)
+            r = (offset + 1):(offset + k * length(v))
+            for (j, q) in enumerate(v)
+                stripelement!(view(data, (offset + (j - 1) * k + 1):(offset + j * k)), name, j, ft, q)
+            end
+            push!(specs, (r, ft))
+            offset += k * length(v)
         else
-            offset += 1
-            data[offset] = ustrip(u, v)
-            push!(specs, (offset, u))
+            stripelement!(view(data, (offset + 1):(offset + k)), name, nothing, ft, v)
+            push!(specs, (offset + 1, ft))
+            offset += k
         end
     end
     # Build the shape NamedTuple from the `specs` vector
@@ -107,18 +217,12 @@ CollectionVector(; kwargs...) = CollectionVector(NamedTuple(kwargs))
 end
 @inline eltypeof(::Type{T}, S::NamedTuple) where {T} = eltypeof(T, values(S))
 @inline function eltypeof(::Type{T}, specs::Tuple) where {T}
-    Union{slotelt(T, first(specs)[2]), eltypeof(T, Base.tail(specs))}
+    Union{elementtype(T, flat_ft(first(specs)[2])), eltypeof(T, Base.tail(specs))}
 end
 @inline eltypeof(::Type{T}, ::Tuple{}) where {T} = Union{}
-@inline slotelt(::Type{T}, u) where {T} = typeof(one(T) * u)
-
-# Helpers for the construction
-rawnumtype(v::Number) = typeof(ustrip(v))
-rawnumtype(v::AbstractArray) = typeof(ustrip(first(v)))
-fieldunit(v::Number) = unit(v)
-fieldunit(v::AbstractArray) = unit(first(v))
-fieldlen(v::Number) = 1
-fieldlen(v::AbstractArray) = length(v)
+# Flat indexing works slot by slot: inside a multi-slot element a single slot has no field
+# type to attach, so it is seen as a raw number.
+@inline flat_ft(ft) = slotcount(ft) == 1 ? ft : nothing
 
 
 
@@ -155,15 +259,15 @@ The shape parameter of an existing CollectionVector can be accessed with the
         "Data length $(length(data)) does not match shape length $(shape_length(S))"))
     CollectionVector{eltype(data), S, typeof(data)}(data)
 end
-shape_length(S::NamedTuple) = sum(spec -> spec_len(spec[1]), values(S))
-spec_len(r::UnitRange{Int}) = length(r)
-spec_len(::Int) = 1
+shape_length(S::NamedTuple) = sum(spec -> spec_len(spec[1], spec[2]), values(S))
+spec_len(r::UnitRange{Int}, ft) = length(r)
+spec_len(::Int, ft) = slotcount(ft)
 
 """
     shapeof(x::CollectionVector) -> NamedTuple
 
 The compile-time shape of a `CollectionVector`: a NamedTuple mapping field names to
-`(slot, unit)`.
+`(slot, field type)`.
 """
 shapeof(::CollectionVector{T, S}) where {T, S} = S
 
@@ -194,8 +298,20 @@ shapeof(::CollectionVector{T, S}) where {T, S} = S
         throw(ArgumentError("CollectionVector has no field '$name'. Available fields: $(keys(S))"))
     end
 end
-@inline fieldview(data, i::Int, u) = data[i] * u
-@inline fieldview(data, r::UnitRange{Int}, u) = reinterpret(slotelt(eltype(data), u), view(data, r))
+# Scalar field: a value.
+# Note that `slotcount(ft)` is a compile-time constant for a given shape, so the branch
+# folds away.
+@inline function fieldview(data, i::Int, ft)
+    k = slotcount(ft)
+    k == 1 ? attach_type(ft, data[i]) : attach_slots(ft, view(data, i:(i + k - 1)))
+end
+# Array field: a zero-copy view. A plain-number field is just a view. Anything else is the
+# same bytes reinterpreted as `Q` (which also handles multi-slot elements such as Complex).
+@inline function fieldview(data, r::UnitRange{Int}, ft)
+    Q = elementtype(eltype(data), ft)
+    v = view(data, r)
+    Q === eltype(data) ? v : reinterpret(Q, v)
+end
 
 
 @inline Base.@constprop :aggressive function Base.setproperty!(
@@ -207,12 +323,22 @@ end
         throw(ArgumentError("CollectionVector has no field '$name'. Available fields: $(keys(S))"))
     end
 end
-@inline function setfield!(data, i::Int, u, val)
-    data[i] = ustrip(u, val)
+@inline function setfield!(data, i::Int, ft, val)
+    k = slotcount(ft)
+    k == 1 ? (data[i] = strip_type(ft, val)) : strip_slots!(view(data, i:(i + k - 1)), ft, val)
     return val
 end
-@inline function setfield!(data, r::UnitRange{Int}, u, val::AbstractArray)
-    data[r] .= ustrip.(Ref(u), val)
+@inline function setfield!(data, r::UnitRange{Int}, ft, val::AbstractArray)
+    k = slotcount(ft)
+    length(val) * k == length(r) || throw(DimensionMismatch(
+        "Cannot assign $(length(val)) elements to an array field of $(length(r) ÷ k) elements"))
+    if k == 1
+        data[r] .= strip_type.(Ref(ft), val)
+    else
+        for (j, q) in enumerate(val)
+            strip_slots!(view(data, (first(r) + (j - 1) * k):(first(r) + j * k - 1)), ft, q)
+        end
+    end
     return val
 end
 @inline function setfield!(data, r::UnitRange{Int}, u, val)
@@ -233,8 +359,8 @@ This makes a copy of the values, it is not a view into the CollectionVector stor
 function Base.NamedTuple(x::CollectionVector{T, S}) where {T, S}
     map(spec -> materialize_field(getfield(x, :data), spec[1], spec[2]), S)
 end
-materialize_field(data, i::Int, u) = data[i] * u
-materialize_field(data, r::UnitRange{Int}, u) = data[r] .* u
+materialize_field(data, i::Int, ft) = fieldview(data, i, ft)
+materialize_field(data, r::UnitRange{Int}, ft) = collect(fieldview(data, r, ft))
 
 
 
@@ -270,23 +396,23 @@ end
 
 @inline function slotget(data, i, specs::Tuple)
     spec = first(specs)
-    inslot(i, spec[1]) && return data[i] * spec[2]
+    inslot(i, spec[1], spec[2]) && return attach_type(flat_ft(spec[2]), data[i])
     return slotget(data, i, Base.tail(specs))
 end
 @inline slotget(data, i, ::Tuple{}) = throw(BoundsError(data, i))
 
 @inline function slotset!(data, v, i, specs::Tuple)
     spec = first(specs)
-    if inslot(i, spec[1])
-        data[i] = ustrip(spec[2], v)
+    if inslot(i, spec[1], spec[2])
+        data[i] = strip_type(flat_ft(spec[2]), v)
         return v
     end
     return slotset!(data, v, i, Base.tail(specs))
 end
 @inline slotset!(data, v, i, ::Tuple{}) = throw(BoundsError(data, i))
 
-@inline inslot(i::Int, s::Int) = i == s
-@inline inslot(i::Int, r::UnitRange{Int}) = i in r
+@inline inslot(i::Int, s::Int, ft) = s <= i < s + slotcount(ft)
+@inline inslot(i::Int, r::UnitRange{Int}, ft) = i in r
 
 
 
@@ -312,14 +438,15 @@ function Base.show(io::IO, ::MIME"text/plain", x::CollectionVector{T, S}) where 
         spec = getfield(S, name)
         println(io)
         print(io, "  ", name, " = ")
-        _show_field(ctx, getfield(x, :data), spec[1], spec[2])
+        show_field(ctx, getfield(x, :data), spec[1], spec[2])
     end
 end
 
-_show_field(io, data, i::Int, u) = show(io, data[i] * u)
-function _show_field(io, data, r::UnitRange{Int}, u)
+show_field(io, data, i::Int, ft) = show(io, materialize_field(data, i, ft))
+function show_field(io, data, r::UnitRange{Int}, ft::Unitful.Units)
     # Print raw values with the unit once, avoiding the parametric eltype noise
     # of Vector{Quantity{...}} display.
     show(io, data[r])
-    u === NoUnits || print(io, " ", u)
+    print(io, " ", ft)
 end
+show_field(io, data, r::UnitRange{Int}, ft) = show(io, materialize_field(data, r, ft))
