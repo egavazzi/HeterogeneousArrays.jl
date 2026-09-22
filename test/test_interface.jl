@@ -16,7 +16,7 @@
     end
 
     @testset "Metadata" begin
-        @test summary(x) == "$(typeof(x)) with members:"
+        @test summary(x) == "4-element HeterogeneousVector{Float64} with fields (:a, :b)"
         @test propertynames(x) == (:a, :b)
     end
 end

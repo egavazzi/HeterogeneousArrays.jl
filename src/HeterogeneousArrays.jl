@@ -37,6 +37,7 @@ include("types.jl")
 include("indexing.jl")
 include("allocation.jl")
 include("broadcasting.jl")
+include("printing.jl")
 
 
 include("collection_vector.jl")
