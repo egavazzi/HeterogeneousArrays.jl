@@ -5,8 +5,8 @@ using Unitful: ustrip, unit
 
 A structured state vector with flat, contiguous, unitless storage of eltype `T`
 and compile-time shape `S` (field names, slot ranges, and field types). `E` is the
-`Union` of the per-field element types `elementtype(T, field_type)`, and is determined
-by `T` and `S`.
+promoted type (`promote_type`) of the per-field element types `elementtype(T, field_type)`,
+and is determined by `T` and `S`.
 
 Elements are unitful: both flat indexing and property access attach the unit of
 the field that owns the slot, and both assignment forms convert into it or
@@ -217,7 +217,7 @@ CollectionVector(; kwargs...) = CollectionVector(NamedTuple(kwargs))
 end
 @inline eltypeof(::Type{T}, S::NamedTuple) where {T} = eltypeof(T, values(S))
 @inline function eltypeof(::Type{T}, specs::Tuple) where {T}
-    Union{elementtype(T, flat_ft(first(specs)[2])), eltypeof(T, Base.tail(specs))}
+    promote_type(elementtype(T, flat_ft(first(specs)[2])), eltypeof(T, Base.tail(specs)))
 end
 @inline eltypeof(::Type{T}, ::Tuple{}) where {T} = Union{}
 # Flat indexing works slot by slot: inside a multi-slot element a single slot has no field

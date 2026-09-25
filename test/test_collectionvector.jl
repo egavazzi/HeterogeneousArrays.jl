@@ -5,7 +5,7 @@ using HeterogeneousArrays: HeterogeneousArrays, rawdata, shapeof, attach
     @test x isa CollectionVector{Float64}
     @test rawdata(x) == [0.1, 1.0, 2.0]
     @test shapeof(x) == (θ = (1, u"rad"), pos = (2:3, u"m"))
-    @test eltype(x) == Union{typeof(1.0u"rad"), typeof(1.0u"m")}
+    @test eltype(x) == Unitful.Quantity{Float64}
     @test length(x) == 3
     @test CollectionVector((θ = 0.1u"rad", pos = [1.0, 2.0]u"m")) == x      # NamedTuple form
 
@@ -14,7 +14,7 @@ using HeterogeneousArrays: HeterogeneousArrays, rawdata, shapeof, attach
         @test shapeof(y) == (n = (1, nothing), w = (2:3, nothing), v = (4:5, u"m/s"))
         @test y.w isa SubArray                # no reinterpret needed
         @test y.n === 3.0
-        @test eltype(y) == Union{Float64, typeof(1.0u"m/s")}
+        @test eltype(y) == Unitful.Quantity{Float64}
     end
 
     @testset "mixed units and number types within a field" begin
