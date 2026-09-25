@@ -23,6 +23,7 @@ using HeterogeneousArrays: HeterogeneousArrays, rawdata, shapeof, attach
         @test eltype(rawdata(CollectionVector(a = Any[4.5f0u"m", 9.5u"ft"]))) == Float64
         @test eltype(rawdata(CollectionVector(a = [1.0f0, 2.0f0]u"m", b = 1.0f0))) == Float32
         @test eltype(rawdata(CollectionVector(a = [1, 2]u"m", b = 1.5))) == Float64
+        @test eltype(rawdata(CollectionVector(a = Any[402.24f0, 41.2]))) == Float64
     end
 
     @testset "rejected inputs" begin
