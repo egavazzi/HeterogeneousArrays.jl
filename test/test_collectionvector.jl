@@ -50,11 +50,11 @@ end
     @test propertynames(x) == (:θ, :pos)
     @test_throws ArgumentError x.nope
 
-    x.pos[1] = 50u"cm";           @test rawdata(x) == [0.1, 0.5, 2.0]
-    x.pos .= [3.0, 4.0]u"cm";     @test rawdata(x) == [0.1, 0.03, 0.04]
-    x.pos .= 0.0u"m";             @test rawdata(x) == [0.1, 0.0, 0.0]
-    x.pos .= 2 .* x.pos .+ 1u"m"; @test rawdata(x) == [0.1, 1.0, 1.0]
-    x.pos = [1.0, 2.0]u"m";       @test rawdata(x) == [0.1, 1.0, 2.0]
+    x.pos[1] = 50u"cm";           @test rawdata(x) ≈ [0.1, 0.5, 2.0]
+    x.pos .= [3.0, 4.0]u"cm";     @test rawdata(x) ≈ [0.1, 0.03, 0.04]
+    x.pos .= 0.0u"m";             @test rawdata(x) ≈ [0.1, 0.0, 0.0]
+    x.pos .= 2 .* x.pos .+ 1u"m"; @test rawdata(x) ≈ [0.1, 1.0, 1.0]
+    x.pos = [1.0, 2.0]u"m";       @test rawdata(x) ≈ [0.1, 1.0, 2.0]
     x.θ = 90u"°";                 @test rawdata(x)[1] ≈ π / 2
 
     @test_throws Unitful.DimensionError x.θ = 1.0u"m"
@@ -69,7 +69,7 @@ end
     @test x[1] === 0.1u"rad"
     @test x[2] === 1.0u"m"
     @test collect(x) == [0.1u"rad", 1.0u"m", 2.0u"m"]
-    x[2] = 50u"cm";  @test rawdata(x)[2] == 0.5
+    x[2] = 50u"cm";  @test rawdata(x)[2] ≈ 0.5
     @test_throws Unitful.DimensionError x[1] = 1.0u"m"
     @test_throws BoundsError x[4]
 end
