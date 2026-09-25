@@ -174,7 +174,6 @@ function CollectionVector(nt::NamedTuple)
     end
     # Storage type: promoted over all fields, must be isbits (checked again in the inner
     # constructor, but here the error comes before any conversion is attempted)
-    # TODO: Idk if we need it here in addition to the inner constructor. But better safe than sorry.
     T = promote_type(map(fieldrawtype, values(nt))...)
     isbitstype(T) || throw(ArgumentError(
         "CollectionVector storage type must be an isbits number type, got $T"))
