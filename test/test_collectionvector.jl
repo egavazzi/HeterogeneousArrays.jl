@@ -149,3 +149,22 @@ end
     @test e isa ArgumentError && occursin("memory layout", e.msg)
     HeterogeneousArrays.elementtype(::Type{T}, u::Symbol) where {T} = TaggedNumber{T, u}  # restore
 end
+
+@testset "CollectionVector: Unitful.AbstractQuantity subtypes" begin
+    x = CollectionVector(a = [FrozenQuantity(1.0, u"m"), FrozenQuantity(50.0, u"cm")], b = FrozenQuantity(0.5, u"rad"))
+    @test rawdata(x) == [1.0, 0.5, 0.5]
+    @test shapeof(x) == (a = (1:2, u"m"), b = (3, u"rad"))
+    # The field type is the unit alone (for the current version of the prototype), so
+    # elements read back as plain `Quantity`s
+    @test x.b === 0.5u"rad"
+    @test x.a == [1.0, 0.5]u"m"
+    @test eltype(x) == Unitful.Quantity{Float64}
+    # Assignment converts into the field's unit, from either quantity type
+    x.b = FrozenQuantity(180.0, u"°");  @test rawdata(x)[3] ≈ Float64(π)
+    x.a[1] = FrozenQuantity(3.0, u"m"); @test rawdata(x)[1] == 3.0
+    x[2] = FrozenQuantity(40.0, u"cm"); @test rawdata(x)[2] ≈ 0.4
+    @test_throws Unitful.DimensionError x.b = FrozenQuantity(1.0, u"kg")
+    # Mixed with regular quantities in one field, and promotion of the raw type
+    @test rawdata(CollectionVector(a = Any[FrozenQuantity(1.0f0, u"m"), 50.0u"cm"])) == [1.0, 0.5]
+    @test eltype(rawdata(CollectionVector(a = FrozenQuantity(1.0f0, u"m")))) == Float32
+end

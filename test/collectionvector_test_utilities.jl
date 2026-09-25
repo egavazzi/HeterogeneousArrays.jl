@@ -29,3 +29,14 @@ function HeterogeneousArrays.strip_type(u::Symbol, q::TaggedNumber{T, V}) where 
 end
 HeterogeneousArrays.attach_type(u::Symbol, x) = TaggedNumber{typeof(x), u}(x)
 HeterogeneousArrays.elementtype(::Type{T}, u::Symbol) where {T} = TaggedNumber{T, u}
+
+# A third-party subtype of `Unitful.AbstractQuantity`, to check that the Unitful methods of the
+# element API are not restricted to `Unitful.Quantity`. Unitful gives such a type `unit`,
+# `dimension` and the arithmetic for free, but `uconvert` (used by `ustrip(u, q)`) is only
+# defined for `Quantity`, so the subtype must provide it.
+struct FrozenQuantity{T, D, U} <: Unitful.AbstractQuantity{T, D, U}
+    val::T
+end
+FrozenQuantity(x::Number, u::Unitful.Units) = FrozenQuantity{typeof(x), Unitful.dimension(u), typeof(u)}(x)
+Unitful.uconvert(u::Unitful.Units, q::FrozenQuantity) = Unitful.uconvert(u, Unitful.Quantity(q.val, Unitful.unit(q)))
+Unitful.ustrip(q::FrozenQuantity) = q.val
