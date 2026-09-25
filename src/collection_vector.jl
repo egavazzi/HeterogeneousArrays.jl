@@ -94,16 +94,16 @@ attach_type(::Nothing, x) = x
 elementtype(::Type{T}, ::Nothing) where {T} = T
 
 # Unitful quantities: the field type is the unit.
-isstorable(::Type{<:Unitful.Quantity{<:Real}}) = true
-field_type(q::Unitful.Quantity) = unit(q)
-strip_type(u::Unitful.Units, q::Unitful.Quantity) = ustrip(u, q)
+isstorable(::Type{<:Unitful.AbstractQuantity{<:Real}}) = true
+field_type(q::Unitful.AbstractQuantity) = unit(q)
+strip_type(u::Unitful.Units, q::Unitful.AbstractQuantity) = ustrip(u, q)
 strip_type(u::Unitful.Units, x::Real) = ustrip(u, x) # use DimensionError message of Unitful
 attach_type(u::Unitful.Units, x) = x * u
 elementtype(::Type{T}, u::Unitful.Units) where {T} = typeof(one(T) * u)
 
 # Complex numbers: two real slots per element, so the storage stays real (solvers and
 # ForwardDiff only ever see reals; the RHS sees `Complex{T}` through the reinterpret view).
-# TODO: support complex *quantities* (`[1+2im]u"m"`) (we require Unitful.Quantity{<:Real} above)
+# TODO: support complex *quantities* (`[1+2im]u"m"`) (we require Unitful.AbstractQuantity{<:Real} above)
 isstorable(::Type{<:Complex{<:Real}}) = true
 rawtype(::Type{Complex{T}}) where {T} = T # storage eltype is the real part type
 struct ComplexParts end
