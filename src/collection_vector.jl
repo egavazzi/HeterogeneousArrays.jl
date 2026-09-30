@@ -99,8 +99,8 @@ rawtype(::Type{Q}) where {Q <: Unitful.AbstractQuantity} = Unitful.numtype(Q)
 field_type(q::Unitful.AbstractQuantity) = unit(q)
 strip_type(u::Unitful.Units, q::Unitful.AbstractQuantity) = ustrip(u, q)
 strip_type(u::Unitful.Units, x::Real) = ustrip(u, x) # use DimensionError message of Unitful
-attach_type(u::Unitful.Units, x) = x * u
-elementtype(::Type{T}, u::Unitful.Units) where {T} = typeof(one(T) * u)
+attach_type(u::Unitful.Units, x) = Unitful.Quantity(x, u)
+elementtype(::Type{T}, ::U) where {T, U <: Unitful.Units} = Unitful.Quantity{T, Unitful.dimension(U), U}
 
 # Complex numbers: two real slots per element, so the storage stays real (solvers and
 # ForwardDiff only ever see reals; the RHS sees `Complex{T}` through the reinterpret view).
@@ -381,7 +381,6 @@ materialize_field(data, r::UnitRange{Int}, ft) = collect(fieldview(data, r, ft))
 # each possibilities. But if there are more units than that, it will widen the return type to
 # a general `Quantity{T}`, which can then cause runtime dispatch if used in other functions.
 # This is not a problem when indexing on fields.
-# TODO: sprinkle some @inbounds/@boundscheck?
 Base.size(x::CollectionVector) = size(getfield(x, :data))
 
 @inline function Base.getindex(x::CollectionVector{T, S}, i::Int) where {T, S}
