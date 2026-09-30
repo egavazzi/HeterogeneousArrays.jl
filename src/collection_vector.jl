@@ -100,7 +100,7 @@ field_type(q::Unitful.AbstractQuantity) = unit(q)
 strip_type(u::Unitful.Units, q::Unitful.AbstractQuantity) = ustrip(u, q)
 strip_type(u::Unitful.Units, x::Real) = ustrip(u, x) # use DimensionError message of Unitful
 attach_type(u::Unitful.Units, x) = Unitful.Quantity(x, u)
-elementtype(::Type{T}, ::U) where {T, U <: Unitful.Units} = Unitful.Quantity{T, Unitful.dimension(U), U}
+elementtype(::Type{T}, u::U) where {T, U <: Unitful.Units} = Unitful.Quantity{T, Unitful.dimension(u), U}
 
 # Complex numbers: two real slots per element, so the storage stays real (solvers and
 # ForwardDiff only ever see reals; the RHS sees `Complex{T}` through the reinterpret view).
