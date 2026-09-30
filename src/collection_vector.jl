@@ -75,7 +75,6 @@ end
 # scalar `strip_type`/`attach_type` (see `Complex` below).
 
 isstorable(::Type) = false
-rawtype(::Type{Q}) where {Q <: Number} = typeof(one(Q))   # `one` is unitless in every unit package
 function field_type end
 function strip_type end
 function attach_type end
@@ -88,6 +87,7 @@ attach_slots(ft, slots) = attach_type(ft, slots[1])
 
 # Plain real numbers: no unit. Field type set to `nothing`.
 isstorable(::Type{<:Real}) = true
+rawtype(::Type{Q}) where {Q <: Real} = Q
 field_type(::Real) = nothing
 strip_type(::Nothing, x::Real) = x
 attach_type(::Nothing, x) = x
@@ -95,6 +95,7 @@ elementtype(::Type{T}, ::Nothing) where {T} = T
 
 # Unitful quantities: the field type is the unit.
 isstorable(::Type{<:Unitful.AbstractQuantity{<:Real}}) = true
+rawtype(::Type{Q}) where {Q <: Unitful.AbstractQuantity} = Unitful.numtype(Q)
 field_type(q::Unitful.AbstractQuantity) = unit(q)
 strip_type(u::Unitful.Units, q::Unitful.AbstractQuantity) = ustrip(u, q)
 strip_type(u::Unitful.Units, x::Real) = ustrip(u, x) # use DimensionError message of Unitful
