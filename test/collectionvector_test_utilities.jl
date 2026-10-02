@@ -20,7 +20,7 @@ TaggedNumber(x, u::Symbol) = TaggedNumber{typeof(x), u}(x)
 # Must define `==` for the tests
 Base.:(==)(a::TaggedNumber, b::TaggedNumber) = typeof(a) === typeof(b) && a.value == b.value
 
-HeterogeneousArrays.isstorable(::Type{<:TaggedNumber}) = true
+HeterogeneousArrays.is_storable(::Type{<:TaggedNumber}) = true
 HeterogeneousArrays.rawtype(::Type{TaggedNumber{T, U}}) where {T, U} = T
 HeterogeneousArrays.field_type(::TaggedNumber{T, U}) where {T, U} = U
 function HeterogeneousArrays.strip_type(u::Symbol, q::TaggedNumber{T, V}) where {T, V}

@@ -35,7 +35,7 @@ using HeterogeneousArrays: HeterogeneousArrays, rawdata, shapeof, attach
         for bad in ([FakeQuantity(2.2, :kms)], [2.2]DynamicQuantities.us"km/s", [2.2]DynamicQuantities.u"km/s",
                     [1.0 + 2im]u"m")
             e = try CollectionVector(a = bad); catch e; e; end
-            @test e isa ArgumentError && occursin("does not support", e.msg) && occursin("isstorable", e.msg)
+            @test e isa ArgumentError && occursin("does not support", e.msg) && occursin("is_storable", e.msg)
         end
         e = try CollectionVector(a = big(1.0)u"m"); catch e; e; end
         @test e isa ArgumentError && occursin("isbits", e.msg)
@@ -141,7 +141,7 @@ end
     e = try CollectionVector(a = [TaggedNumber(2.2, :kms), TaggedNumber(9.2, :m)]); catch e; e; end
     @test e isa ArgumentError && occursin("element 2", e.msg) && occursin("unit mismatch", e.msg)
     # A type whose values are not laid out like one raw number is caught by the layout check.
-    HeterogeneousArrays.isstorable(::Type{<:FakeQuantity}) = true
+    HeterogeneousArrays.is_storable(::Type{<:FakeQuantity}) = true
     HeterogeneousArrays.rawtype(::Type{FakeQuantity{T}}) where {T} = T
     HeterogeneousArrays.field_type(q::FakeQuantity) = q.unit
     HeterogeneousArrays.elementtype(::Type{T}, ::Symbol) where {T} = FakeQuantity{T}   # overrides TaggedNumber's for this check

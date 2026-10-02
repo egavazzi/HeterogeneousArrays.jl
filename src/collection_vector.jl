@@ -60,7 +60,7 @@ end
 
 ## Element type compatibility API
 # What the container needs to know about an element type `Q`
-#   isstorable(Q)         -> Bool          opt-in gate; false by default, true for supported types
+#   is_storable(Q)         -> Bool          opt-in gate; false by default, true for supported types
 #   rawtype(Q)            -> Type          plain isbits number type stored for a `Q` (storage vector eltype)
 #   field_type(q)         -> isbits value  what identifies the field's elements once the raw
 #                                          number is removed (a unit, `nothing`, ...); goes into `S`
@@ -74,7 +74,7 @@ end
 # Elements that occupy several slots implement `strip_slots!`/`attach_slots` instead of the
 # scalar `strip_type`/`attach_type` (see `Complex` below).
 
-isstorable(::Type) = false
+is_storable(::Type) = false
 function field_type end
 function strip_type end
 function attach_type end
@@ -86,7 +86,7 @@ strip_slots!(slots, ft, q) = (slots[1] = strip_type(ft, q); slots)
 attach_slots(ft, slots) = attach_type(ft, slots[1])
 
 # Plain real numbers: no unit. Field type set to `nothing`.
-isstorable(::Type{<:Real}) = true
+is_storable(::Type{<:Real}) = true
 rawtype(::Type{Q}) where {Q <: Real} = Q
 field_type(::Real) = nothing
 strip_type(::Nothing, x::Real) = x
@@ -94,7 +94,7 @@ attach_type(::Nothing, x) = x
 elementtype(::Type{T}, ::Nothing) where {T} = T
 
 # Unitful quantities: the field type is the unit.
-isstorable(::Type{<:Unitful.AbstractQuantity{<:Real}}) = true
+is_storable(::Type{<:Unitful.AbstractQuantity{<:Real}}) = true
 rawtype(::Type{Q}) where {Q <: Unitful.AbstractQuantity} = Unitful.numtype(Q)
 field_type(q::Unitful.AbstractQuantity) = unit(q)
 strip_type(u::Unitful.Units, q::Unitful.AbstractQuantity) = ustrip(u, q)
@@ -105,7 +105,7 @@ elementtype(::Type{T}, u::U) where {T, U <: Unitful.Units} = Unitful.Quantity{T,
 # Complex numbers: two real slots per element, so the storage stays real (solvers and
 # ForwardDiff only ever see reals; the RHS sees `Complex{T}` through the reinterpret view).
 # TODO: support complex *quantities* (`[1+2im]u"m"`) (we require Unitful.AbstractQuantity{<:Real} above)
-isstorable(::Type{<:Complex{<:Real}}) = true
+is_storable(::Type{<:Complex{<:Real}}) = true
 rawtype(::Type{Complex{T}}) where {T} = T # storage eltype is the real part type
 struct ComplexParts end
 field_type(::Complex) = ComplexParts()    # custom field type
@@ -121,13 +121,13 @@ fieldlen(v::AbstractArray) = length(v)
 fieldlen(v) = 1
 
 # The gate: is the element type of this field supported?
-# TODO: right now we check for a manual isstorable implementation. Could check for
+# TODO: right now we check for a manual is_storable implementation. Could check for
 # `hasmethod` on the needed functions instead.
 function checkelement(name, v)
     Q = typeof(firstelem(v))
-    isstorable(Q) || throw(ArgumentError(
+    is_storable(Q) || throw(ArgumentError(
         "Field '$name' has element type $Q, which CollectionVector does not support. " *
-        "Implement isstorable, rawtype, field_type, strip_type, attach_type and elementtype for it."))
+        "Implement is_storable, rawtype, field_type, strip_type, attach_type and elementtype for it."))
     return nothing
 end
 
