@@ -269,3 +269,17 @@ end
     @test !(n ≈ n) && isapprox(n, n; nans = true)
     @test @inferred(isapprox(x, y)) isa Bool
 end
+
+@testset "CollectionVector: aliasing" begin
+    # The vector reports the memory of its storage, so a field view is known to alias it
+    x = CollectionVector(a = [1.0, 2.0, 3.0]u"m", b = 4.0u"m")
+    @test Base.dataids(x) == Base.dataids(rawdata(x))
+    @test Base.mightalias(x, x.a) && Base.mightalias(x, view(x.a, 1:2)) && Base.mightalias(x, rawdata(x))
+    @test !Base.mightalias(x, copy(x))
+    c = CollectionVector(z = [1.0 + 2im, 3.0 + 4im])
+    @test Base.mightalias(c, c.z)
+    # Writing a reversed view of a field back onto the vector reads all values before writing
+    x = CollectionVector(a = [1.0, 2.0, 3.0])
+    x .= view(x.a, 3:-1:1)
+    @test rawdata(x) == [3.0, 2.0, 1.0]
+end

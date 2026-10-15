@@ -438,6 +438,9 @@ end
 Base.copy(x::CollectionVector) = attach(shapeof(x), copy(rawdata(x)))
 Base.zero(x::CollectionVector) = attach(shapeof(x), zero(rawdata(x)))
 Base.similar(x::CollectionVector) = attach(shapeof(x), similar(rawdata(x)))
+# Tell the compiler that the CollectionVector and its storage vector share the same memory,
+# important for correct alias behavior in some cases of in-place broadcasting.
+Base.dataids(x::CollectionVector) = Base.dataids(rawdata(x))
 
 # Two CollectionVectors with the same shape, just copy the storage
 function Base.copyto!(dest::CollectionVector{<:Any, S}, src::CollectionVector{<:Any, S}) where {S}
