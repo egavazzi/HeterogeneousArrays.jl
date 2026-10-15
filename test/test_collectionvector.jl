@@ -204,3 +204,31 @@ end
     @test rawdata(CollectionVector(a = Any[FrozenQuantity(1.0f0, u"m"), 50.0u"cm"])) == [1.0, 0.5]
     @test eltype(rawdata(CollectionVector(a = FrozenQuantity(1.0f0, u"m")))) == Float32
 end
+
+@testset "CollectionVector: array interface" begin
+    x = CollectionVector(a = [1.0, 2.0]u"m", b = [3.0, 4.0, 5.0]u"s", c = 6, d = 7.0u"rad",
+        e = [8.0 + 9.0im, 10.0 + 11.0im])
+
+    # similar, copy and zero keep the shape, with new storage
+    for y in (similar(x), copy(x), zero(x))
+        @test y isa typeof(x)
+        @test rawdata(y) !== rawdata(x)
+    end
+    @test copy(x) == x
+    @test rawdata(zero(x)) == zeros(11)
+    @test zero(x).a == [0.0, 0.0]u"m" && zero(x).e == [0.0 + 0.0im, 0.0 + 0.0im]
+
+    # copyto! between vectors of the same shape, also across storage types
+    y = zero(x)
+    @test copyto!(y, x) === y && y == x
+    @test copyto!(zero(x), attach(shapeof(x), Float32.(rawdata(x)))) == x
+    @test copy!(zero(x), x) == x
+    # Different shapes are refused, even when the slots line up or the units agree
+    @test_throws "destination shape: (v = (1, s), w = (2, s)) \nsource shape:      (u = (1:2, m),)" copyto!(
+        CollectionVector(v = 1.0u"s", w = 2.0u"s"), CollectionVector(u = [1.0, 2.0]u"m"))
+    @test_throws DimensionMismatch copyto!(CollectionVector(p = [1.0, 2.0]u"m"), CollectionVector(q = [3.0, 4.0]u"m"))
+    @test_throws DimensionMismatch copyto!(CollectionVector(p = zeros(3)u"m"), CollectionVector(p = [1.0, 2.0]u"m"))
+    @test_throws DimensionMismatch copyto!(CollectionVector(p = 0.0), CollectionVector(p = 1.0im))
+    # A plain vector source carries no shape and is copied element by element
+    @test copyto!(CollectionVector(p = zeros(2)u"m"), [1.0, 2.0]u"m").p == [1.0, 2.0]u"m"
+end

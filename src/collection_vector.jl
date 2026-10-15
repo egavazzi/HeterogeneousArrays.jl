@@ -65,7 +65,7 @@ end
 
 ## Element type compatibility API
 # What the container needs to know about an element type `Q`
-#   is_storable(Q)         -> Bool          opt-in gate; false by default, true for supported types
+#   is_storable(Q)        -> Bool          opt-in gate; false by default, true for supported types
 #   rawtype(Q)            -> Type          plain isbits number type stored for a `Q` (storage vector eltype)
 #   field_type(q)         -> isbits value  what identifies the field's elements once the raw
 #                                          number is removed (a unit, `nothing`, ...); goes into `S`
@@ -107,9 +107,7 @@ firstelem(v) = v
 fieldlen(v::AbstractArray) = length(v)
 fieldlen(v) = 1
 
-# The gate: is the element type of this field supported?
-# TODO: right now we check for a manual is_storable implementation. Could check for
-# `hasmethod` on the needed functions instead.
+# The gate: check if the element type of this field is supported
 function checkelement(name, v)
     unsupported(Q) = ArgumentError(
         "Field '$name' has element type $Q, which CollectionVector does not support. " *
@@ -121,7 +119,7 @@ function checkelement(name, v)
             is_storable(typeof(x)) || throw(unsupported(typeof(x)))
         end
     else
-        # Concrete eltype: cchecl only the first
+        # Concrete eltype: check only the first
         Q = typeof(firstelem(v))
         is_storable(Q) || throw(unsupported(Q))
     end
@@ -144,7 +142,6 @@ function checklayouts(::Type{T}, names::Tuple, specs::Tuple) where {T}
     checklayout(first(names), T, first(specs)[2])
     return checklayouts(T, Base.tail(names), Base.tail(specs))
 end
-# If it is empty
 checklayouts(::Type{T}, ::Tuple{}, ::Tuple{}) where {T} = nothing
 
 function checklayout(name, ::Type{T}, ft) where {T}
@@ -437,9 +434,31 @@ end
 
 
 
+## Array interface
+Base.copy(x::CollectionVector) = attach(shapeof(x), copy(rawdata(x)))
+Base.zero(x::CollectionVector) = attach(shapeof(x), zero(rawdata(x)))
+Base.similar(x::CollectionVector) = attach(shapeof(x), similar(rawdata(x)))
+
+# Two CollectionVectors with the same shape, just copy the storage
+function Base.copyto!(dest::CollectionVector{<:Any, S}, src::CollectionVector{<:Any, S}) where {S}
+    copyto!(rawdata(dest), rawdata(src))
+    return dest
+end
+
+# Two CollectionVectors with different shapes, throw an error
+function Base.copyto!(dest::CollectionVector, src::CollectionVector)
+    throw(DimensionMismatch(
+        "cannot copy between CollectionVectors with different shapes: \n" *
+        "destination shape: $(shapeof(dest)) \n" *
+        "source shape:      $(shapeof(src))"))
+end
+
+# Redirect copy! to copyto!, to also get the shape error messages rather than the less
+# informative errors about resize!
+Base.copy!(dest::CollectionVector, src::CollectionVector) = copyto!(dest, src)
+
 
 ## Display
-
 function Base.summary(io::IO, x::CollectionVector{T, S}) where {T, S}
     print(io, length(getfield(x, :data)), "-element CollectionVector{", T,
         "} with fields ", keys(S))
