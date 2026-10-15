@@ -232,3 +232,19 @@ end
     # A plain vector source carries no shape and is copied element by element
     @test copyto!(CollectionVector(p = zeros(2)u"m"), [1.0, 2.0]u"m").p == [1.0, 2.0]u"m"
 end
+
+@testset "CollectionVector: iteration" begin
+    # Iteration is the AbstractArray default (eachindex + getindex): it walks the raw
+    # storage vector slot by slot
+    x = CollectionVector(a = [1.0, 2.0]u"m", b = 3.0u"s", c = [4.0 + 5.0im])
+    @test collect(x) == [x[i] for i in eachindex(x)]
+    @test collect(x) == [1.0u"m", 2.0u"m", 3.0u"s", 4.0, 5.0]
+    @test length(x) == 5 && eltype(x) === Unitful.Quantity{Float64}
+
+    # With a single unit the element type is concrete and element loops are inferred
+    u = CollectionVector(a = [1.0, 2.0]u"m", b = 3.0u"m")
+    @test eltype(u) === typeof(1.0u"m")
+    @test @inferred(Nothing, iterate(u, 2)) == (2.0u"m", 3)
+    @test @inferred(sum(u)) == 6.0u"m"
+    @test @inferred(maximum(u)) == 3.0u"m"
+end
