@@ -248,3 +248,24 @@ end
     @test @inferred(sum(u)) == 6.0u"m"
     @test @inferred(maximum(u)) == 3.0u"m"
 end
+
+@testset "CollectionVector: isapprox" begin
+    x = CollectionVector(a = [1.0, 2.0]u"m", b = 3.0u"s", c = [4.0 + 5.0im], d = 6.0)
+    y = copy(x)
+    @test x ≈ y
+    y.a[2] += 1e-12u"m";  @test x ≈ y
+    y.a[2] = 2.5u"m";     @test !(x ≈ y) && isapprox(x, y; rtol = 0.5)
+    # Fields are compared on their own scale, after unit conversion
+    @test x ≈ CollectionVector(a = [100.0, 200.0]u"cm", b = 3000.0u"ms", c = [4.0 + 5.0im], d = 6.0)
+    @test isapprox(CollectionVector(p = [1.0]u"m", q = 2.0u"m"),
+        CollectionVector(p = [1.5]u"m", q = 2.0u"m"); atol = 1.0u"m")
+    # A unitful atol cannot apply to a field of another dimension
+    @test_throws Unitful.DimensionError isapprox(x, y; atol = 1.0u"m")
+    # Different field names, scalar against array, or a plain number against a quantity
+    @test !(x ≈ CollectionVector(a = [1.0, 2.0]u"m", b = 3.0u"s", c = [4.0 + 5.0im], e = 6.0))
+    @test !(x ≈ CollectionVector(a = [1.0, 2.0]u"m", b = [3.0]u"s", c = [4.0 + 5.0im], d = 6.0))
+    @test !(x ≈ CollectionVector(a = [1.0, 2.0]u"m", b = 3.0u"s", c = [4.0 + 5.0im], d = 6.0u"m"))
+    n = CollectionVector(a = [NaN, 1.0]u"m")
+    @test !(n ≈ n) && isapprox(n, n; nans = true)
+    @test @inferred(isapprox(x, y)) isa Bool
+end

@@ -457,6 +457,24 @@ end
 # informative errors about resize!
 Base.copy!(dest::CollectionVector, src::CollectionVector) = copyto!(dest, src)
 
+# Approximate equality is decided field by field, so `rtol` applies to each field on its own
+# scale and fields with different but compatible units compare after conversion. A unitful
+# `atol` only works when every field has that dimension. Vectors whose field names differ
+# will return false.
+function Base.isapprox(x::CollectionVector{<:Any, S1}, y::CollectionVector{<:Any, S2}; kwargs...) where {S1, S2}
+    keys(S1) == keys(S2) || return false
+    return fieldsapprox(x, y, Val(keys(S1)); kwargs...)
+end
+# Recursion over the field names, carried in the type so that each name is a compile-time
+# constant and field access are inferred
+fieldsapprox(x, y, ::Val{()}; kwargs...) = true
+@inline function fieldsapprox(x, y, ::Val{names}; kwargs...) where {names}
+    a, b = getproperty(x, first(names)), getproperty(y, first(names))
+    (a isa AbstractArray) == (b isa AbstractArray) || return false
+    isapprox(a, b; kwargs...) || return false
+    return fieldsapprox(x, y, Val(Base.tail(names)); kwargs...)
+end
+
 
 ## Display
 function Base.summary(io::IO, x::CollectionVector{T, S}) where {T, S}
