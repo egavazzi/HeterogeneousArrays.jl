@@ -442,22 +442,47 @@ Base.similar(x::CollectionVector) = attach(shapeof(x), similar(rawdata(x)))
 # important for correct alias behavior in some cases of in-place broadcasting.
 Base.dataids(x::CollectionVector) = Base.dataids(rawdata(x))
 
-# Two CollectionVectors with the same shape, just copy the storage
+# Same shape: copy the storage directly.
 function Base.copyto!(dest::CollectionVector{<:Any, S}, src::CollectionVector{<:Any, S}) where {S}
     copyto!(rawdata(dest), rawdata(src))
     return dest
 end
 
-# Two CollectionVectors with different shapes, throw an error
-function Base.copyto!(dest::CollectionVector, src::CollectionVector)
-    throw(DimensionMismatch(
-        "cannot copy between CollectionVectors with different shapes: \n" *
-        "destination shape: $(shapeof(dest)) \n" *
-        "source shape:      $(shapeof(src))"))
+# Different shapes: the fields names must match, must be of same length or type
+# (scalar/array), but may differ in unit or element type as long as conversion is
+# possible (e.g. 'ft' to 'm' or 'Int' to 'Float64').
+function Base.copyto!(dest::CollectionVector{<:Any, S1}, src::CollectionVector{<:Any, S2}) where {S1, S2}
+    keys(S1) == keys(S2) || throw(layoutmismatch("field names", S1, S2))
+    checkfieldlayouts(Val(S1), Val(S2), Val(keys(S1)))
+    return copyfields!(dest, src, Val(keys(S1)))
+end
+function layoutmismatch(what, S1, S2)
+    return DimensionMismatch(
+        "cannot copy between CollectionVectors with different $what: \n" *
+        "destination shape: $S1 \n" *
+        "source shape:      $S2")
 end
 
-# Redirect copy! to copyto!, to also get the shape error messages rather than the less
-# informative errors about resize!
+# Check that fields with the same names are of the same kind (scalar/array) and have the
+# same length.
+checkfieldlayouts(::Val, ::Val, ::Val{()}) = nothing
+@inline function checkfieldlayouts(::Val{S1}, ::Val{S2}, ::Val{names}) where {S1, S2, names}
+    name = first(names)
+    d, s = getfield(S1, name)[1], getfield(S2, name)[1]
+    (d isa Int) == (s isa Int) || throw(layoutmismatch("field kinds (scalar/array)", S1, S2))
+    length(d) == length(s) || throw(layoutmismatch("field lengths", S1, S2))
+    return checkfieldlayouts(Val(S1), Val(S2), Val(Base.tail(names)))
+end
+# copy field values field by field using the `setproperty!` interface
+copyfields!(dest, src, ::Val{()}) = dest
+@inline function copyfields!(dest, src, ::Val{names}) where {names}
+    name = first(names)
+    setproperty!(dest, name, getproperty(src, name))
+    return copyfields!(dest, src, Val(Base.tail(names)))
+end
+
+# Redirect copy! to copyto!, to also get the shape error messages and unit conversion rather
+# than the less informative errors about resize!
 Base.copy!(dest::CollectionVector, src::CollectionVector) = copyto!(dest, src)
 
 # Approximate equality is decided field by field, so `rtol` applies to each field on its own

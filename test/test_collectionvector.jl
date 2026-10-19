@@ -223,14 +223,28 @@ end
     @test copyto!(y, x) === y && y == x
     @test copyto!(zero(x), attach(shapeof(x), Float32.(rawdata(x)))) == x
     @test copy!(zero(x), x) == x
-    # Different shapes are refused, even when the slots line up or the units agree
-    @test_throws "destination shape: (v = (1, s), w = (2, s)) \nsource shape:      (u = (1:2, m),)" copyto!(
-        CollectionVector(v = 1.0u"s", w = 2.0u"s"), CollectionVector(u = [1.0, 2.0]u"m"))
-    @test_throws DimensionMismatch copyto!(CollectionVector(p = [1.0, 2.0]u"m"), CollectionVector(q = [3.0, 4.0]u"m"))
-    @test_throws DimensionMismatch copyto!(CollectionVector(p = zeros(3)u"m"), CollectionVector(p = [1.0, 2.0]u"m"))
-    @test_throws DimensionMismatch copyto!(CollectionVector(p = 0.0), CollectionVector(p = 1.0im))
-    # A plain vector source carries no shape and is copied element by element
-    @test copyto!(CollectionVector(p = zeros(2)u"m"), [1.0, 2.0]u"m").p == [1.0, 2.0]u"m"
+    # Different units or element types are converted field by field
+    y = CollectionVector(a = zeros(2)u"cm", b = zeros(Float32, 3)u"minute", c = 0.0, d = 0.0u"°",
+        e = [0.0 + 0.0im, 0.0 + 0.0im])
+    @test copyto!(y, x) === y
+    @test y.a == [100.0, 200.0]u"cm" && y.b == x.b && y.c == 6.0 && y.d ≈ x.d && y.e == x.e
+    @test copyto!(zero(x), y) ≈ x
+    @test copy!(zero(y), x) ≈ y
+    # Incompatible units are refused
+    @test_throws Unitful.DimensionError copyto!(CollectionVector(p = 0.0u"s"), CollectionVector(p = 1.0u"m"))
+    @test_throws Unitful.DimensionError copyto!(CollectionVector(p = zeros(2)u"s"), CollectionVector(p = [1.0, 2.0]u"m"))
+    # Different field layouts are refused, even when the slots line up
+    @test_throws "different field names: \ndestination shape: (v = (1, s), w = (2, s)) \nsource shape:      (u = (1:2, s),)" copyto!(
+        CollectionVector(v = 1.0u"s", w = 2.0u"s"), CollectionVector(u = [1.0, 2.0]u"s"))
+    @test_throws "different field names" copyto!(CollectionVector(p = [1.0, 2.0]u"m"), CollectionVector(q = [3.0, 4.0]u"m"))
+    @test_throws "different field lengths" copyto!(CollectionVector(p = zeros(3)u"m"), CollectionVector(p = [1.0, 2.0]u"m"))
+    @test_throws "different field kinds (scalar/array)" copyto!(CollectionVector(p = 0.0), CollectionVector(p = [1.0]))
+    # Element types convert like scalars do: a complex value with a nonzero imaginary part
+    # cannot be stored in a real field
+    @test copyto!(CollectionVector(p = 0.0), CollectionVector(p = 2.0 + 0.0im)).p == 2.0
+    @test_throws InexactError copyto!(CollectionVector(p = 0.0), CollectionVector(p = 1.0im))
+    # copy works with a plain vector source
+    @test copyto!(CollectionVector(p = zeros(2)u"m"), [1.0, 2.0]u"cm").p ≈ [1.0, 2.0]u"cm"
 end
 
 @testset "CollectionVector: iteration" begin
