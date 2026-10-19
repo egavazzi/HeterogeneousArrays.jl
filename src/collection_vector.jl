@@ -473,6 +473,7 @@ end
 fieldsapprox(x, y, ::Val{()}; kwargs...) = true
 @inline function fieldsapprox(x, y, ::Val{names}; kwargs...) where {names}
     a, b = getproperty(x, first(names)), getproperty(y, first(names))
+    # return false if one component is a scalar and one is an array.
     (a isa AbstractArray) == (b isa AbstractArray) || return false
     isapprox(a, b; kwargs...) || return false
     return fieldsapprox(x, y, Val(Base.tail(names)); kwargs...)
