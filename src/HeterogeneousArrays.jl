@@ -39,7 +39,6 @@ include("allocation.jl")
 include("broadcasting.jl")
 include("printing.jl")
 
-
 include("collection_vector.jl")
 export CollectionVector
 

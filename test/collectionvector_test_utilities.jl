@@ -62,6 +62,10 @@ HeterogeneousArrays.elementtype(::Type, ::MislabeledTripleField) = MislabeledTri
 struct FrozenQuantity{T, D, U} <: Unitful.AbstractQuantity{T, D, U}
     val::T
 end
-FrozenQuantity(x::Number, u::Unitful.Units) = FrozenQuantity{typeof(x), Unitful.dimension(u), typeof(u)}(x)
-Unitful.uconvert(u::Unitful.Units, q::FrozenQuantity) = Unitful.uconvert(u, Unitful.Quantity(q.val, Unitful.unit(q)))
+function FrozenQuantity(x::Number, u::Unitful.Units)
+    FrozenQuantity{typeof(x), Unitful.dimension(u), typeof(u)}(x)
+end
+function Unitful.uconvert(u::Unitful.Units, q::FrozenQuantity)
+    Unitful.uconvert(u, Unitful.Quantity(q.val, Unitful.unit(q)))
+end
 Unitful.ustrip(q::FrozenQuantity) = q.val

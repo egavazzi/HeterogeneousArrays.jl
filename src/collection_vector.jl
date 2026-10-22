@@ -57,12 +57,6 @@ struct CollectionVector{T, S, D <: AbstractVector{T}, E} <: AbstractVector{E}
     end
 end
 
-
-
-
-
-
-
 ## Element type compatibility API
 # What the container needs to know about an element type `Q`
 #   is_storable(Q)        -> Bool          opt-in gate; false by default, true for supported types
@@ -90,7 +84,9 @@ elementtype(::Type{T}, ::Nothing) where {T} = T
 is_storable(::Type{<:Unitful.AbstractQuantity{<:Real}}) = true
 rawtype(::Type{Q}) where {Q <: Unitful.AbstractQuantity} = Unitful.numtype(Q)
 field_type(q::Unitful.AbstractQuantity) = unit(q)
-elementtype(::Type{T}, u::U) where {T, U <: Unitful.Units} = Unitful.Quantity{T, Unitful.dimension(u), U}
+function elementtype(::Type{T}, u::U) where {T, U <: Unitful.Units}
+    Unitful.Quantity{T, Unitful.dimension(u), U}
+end
 
 # Complex numbers: two real slots per element, so the storage stays real (solvers and
 # ForwardDiff only ever see reals; the RHS sees `Complex{T}` through the reinterpret view).
@@ -161,7 +157,9 @@ function componenttypes(::Type{Q}) where {Q}
     isconcretetype(Q) && fieldcount(Q) > 0 || return (Q,)
     return concat_componenttypes(fieldtypes(Q))
 end
-concat_componenttypes(ts::Tuple) = (componenttypes(first(ts))..., concat_componenttypes(Base.tail(ts))...)
+function concat_componenttypes(ts::Tuple)
+    (componenttypes(first(ts))..., concat_componenttypes(Base.tail(ts))...)
+end
 concat_componenttypes(::Tuple{}) = ()
 
 # Store `q` as element `j` of the field view `fv` (`nothing` for a scalar field), rethrowing
@@ -172,18 +170,10 @@ function storeelement!(fv, name, j, ft, q)
     catch e
         where = j === nothing ? "value" : "element $j"
         throw(ArgumentError("Field '$name': $where is $q, which cannot be expressed in the " *
-            "field's type $ft (taken from the first element). Cause: $(sprint(showerror, e))"))
+                            "field's type $ft (taken from the first element). Cause: $(sprint(showerror, e))"))
     end
     return nothing
 end
-
-
-
-
-
-
-
-
 
 ## Constructor from a NamedTuple
 function CollectionVector(nt::NamedTuple)
@@ -219,7 +209,8 @@ function CollectionVector(nt::NamedTuple)
             push!(specs, (r, ft))
             offset += k * length(v)
         else
-            storeelement!(fieldview(data, (offset + 1):(offset + k), ft), name, nothing, ft, v)
+            storeelement!(
+                fieldview(data, (offset + 1):(offset + k), ft), name, nothing, ft, v)
             push!(specs, (offset + 1, ft))
             offset += k
         end
@@ -248,18 +239,6 @@ end
 # Number of storage slots one element of field type `ft` occupies
 @inline slotcount(::Type{T}, ft) where {T} = sizeof(elementtype(T, ft)) ÷ sizeof(T)
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Tooling to attach/detach units of a whole CollectionVector at once
 """
     rawdata(x) -> AbstractVector
@@ -281,7 +260,9 @@ The shape parameter of an existing CollectionVector can be accessed with the
 @inline function attach(S::NamedTuple, data::AbstractVector)
     CollectionVector{eltype(data), S, typeof(data)}(data)
 end
-shape_length(::Type{T}, S::NamedTuple) where {T} = sum(spec -> spec_len(T, spec[1], spec[2]), values(S))
+function shape_length(::Type{T}, S::NamedTuple) where {T}
+    sum(spec -> spec_len(T, spec[1], spec[2]), values(S))
+end
 spec_len(::Type, r::UnitRange{Int}, ft) = length(r)
 spec_len(::Type{T}, ::Int, ft) where {T} = slotcount(T, ft)
 
@@ -292,21 +273,6 @@ The compile-time shape of a `CollectionVector`: a NamedTuple mapping field names
 `(slot, field type)`.
 """
 shapeof(::CollectionVector{T, S}) where {T, S} = S
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ## Tooling to access and modidy property/fields of a CollectionVector
 # e.g. x.pos = [3.0, 4.0]u"cm"
@@ -331,7 +297,6 @@ end
     v = view(data, r)
     Q === eltype(data) ? v : reinterpret(Q, v)
 end
-
 
 @inline Base.@constprop :aggressive function Base.setproperty!(
         x::CollectionVector{T, S}, name::Symbol, val) where {T, S}
@@ -376,16 +341,6 @@ end
 materialize_field(data, i::Int, ft) = fieldview(data, i, ft)
 materialize_field(data, r::UnitRange{Int}, ft) = collect(fieldview(data, r, ft))
 
-
-
-
-
-
-
-
-
-
-
 ## Tooling to index directly on CollectionVector
 # e.g. x[2] = 50u"cm"
 # Note that if the index `i` is a runtime value, the compiler cannot know which field owns
@@ -409,7 +364,8 @@ end
 
 @inline function slotget(data, i, specs::Tuple)
     spec = first(specs)
-    inslot(eltype(data), i, spec[1], spec[2]) && return fieldview(data, i, flat_ft(eltype(data), spec[2]))
+    inslot(eltype(data), i, spec[1], spec[2]) &&
+        return fieldview(data, i, flat_ft(eltype(data), spec[2]))
     return slotget(data, i, Base.tail(specs))
 end
 @inline slotget(data, i, ::Tuple{}) = throw(BoundsError(data, i))
@@ -426,14 +382,6 @@ end
 @inline inslot(::Type{T}, i::Int, s::Int, ft) where {T} = s <= i < s + slotcount(T, ft)
 @inline inslot(::Type, i::Int, r::UnitRange{Int}, ft) = i in r
 
-
-
-
-
-
-
-
-
 ## Array interface
 Base.copy(x::CollectionVector) = attach(shapeof(x), copy(rawdata(x)))
 Base.zero(x::CollectionVector) = attach(shapeof(x), zero(rawdata(x)))
@@ -443,7 +391,8 @@ Base.similar(x::CollectionVector) = attach(shapeof(x), similar(rawdata(x)))
 Base.dataids(x::CollectionVector) = Base.dataids(rawdata(x))
 
 # Same shape: copy the storage directly.
-function Base.copyto!(dest::CollectionVector{<:Any, S}, src::CollectionVector{<:Any, S}) where {S}
+function Base.copyto!(dest::CollectionVector{<:Any, S}, src::CollectionVector{
+        <:Any, S}) where {S}
     copyto!(rawdata(dest), rawdata(src))
     return dest
 end
@@ -451,7 +400,8 @@ end
 # Different shapes: the fields names must match, must be of same length or type
 # (scalar/array), but may differ in unit or element type as long as conversion is
 # possible (e.g. 'ft' to 'm' or 'Int' to 'Float64').
-function Base.copyto!(dest::CollectionVector{<:Any, S1}, src::CollectionVector{<:Any, S2}) where {S1, S2}
+function Base.copyto!(dest::CollectionVector{<:Any, S1}, src::CollectionVector{
+        <:Any, S2}) where {S1, S2}
     keys(S1) == keys(S2) || throw(layoutmismatch("field names", S1, S2))
     checkfieldlayouts(Val(S1), Val(S2), Val(keys(S1)))
     return copyfields!(dest, src, Val(keys(S1)))
@@ -469,7 +419,8 @@ checkfieldlayouts(::Val, ::Val, ::Val{()}) = nothing
 @inline function checkfieldlayouts(::Val{S1}, ::Val{S2}, ::Val{names}) where {S1, S2, names}
     name = first(names)
     d, s = getfield(S1, name)[1], getfield(S2, name)[1]
-    (d isa Int) == (s isa Int) || throw(layoutmismatch("field kinds (scalar/array)", S1, S2))
+    (d isa Int) == (s isa Int) ||
+        throw(layoutmismatch("field kinds (scalar/array)", S1, S2))
     length(d) == length(s) || throw(layoutmismatch("field lengths", S1, S2))
     return checkfieldlayouts(Val(S1), Val(S2), Val(Base.tail(names)))
 end
@@ -489,7 +440,9 @@ Base.copy!(dest::CollectionVector, src::CollectionVector) = copyto!(dest, src)
 # scale and fields with different but compatible units compare after conversion. A unitful
 # `atol` only works when every field has that dimension. Vectors whose field names differ
 # will return false.
-function Base.isapprox(x::CollectionVector{<:Any, S1}, y::CollectionVector{<:Any, S2}; kwargs...) where {S1, S2}
+function Base.isapprox(
+        x::CollectionVector{<:Any, S1}, y::CollectionVector{
+            <:Any, S2}; kwargs...) where {S1, S2}
     keys(S1) == keys(S2) || return false
     return fieldsapprox(x, y, Val(keys(S1)); kwargs...)
 end
@@ -503,7 +456,6 @@ fieldsapprox(x, y, ::Val{()}; kwargs...) = true
     isapprox(a, b; kwargs...) || return false
     return fieldsapprox(x, y, Val(Base.tail(names)); kwargs...)
 end
-
 
 ## Display
 function Base.summary(io::IO, x::CollectionVector{T, S}) where {T, S}
