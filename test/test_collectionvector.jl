@@ -320,7 +320,11 @@ end
     # With a single unit the element type is concrete and element loops are inferred
     u = CollectionVector(a = [1.0, 2.0]u"m", b = 3.0u"m")
     @test eltype(u) === typeof(1.0u"m")
-    @test @inferred(Nothing, iterate(u, 2)) == (2.0u"m", 3)
+    # The iteration state is opaque: its form differs between Julia versions
+    y = @inferred(Nothing, iterate(u))
+    @test y[1] == 1.0u"m"
+    y = @inferred(Nothing, iterate(u, y[2]))
+    @test y[1] == 2.0u"m"
     @test @inferred(sum(u)) == 6.0u"m"
     @test @inferred(maximum(u)) == 3.0u"m"
 end
